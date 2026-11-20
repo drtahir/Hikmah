@@ -22,11 +22,25 @@ android {
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      val keystorePath = System.getenv("KEYSTORE_PATH")?.takeIf { it.isNotBlank() } ?: "${rootDir}/my-upload-key.jks"
+      val releaseKeystoreFile = file(keystorePath)
+      val releaseStorePassword = System.getenv("STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+      val releaseKeyAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "upload"
+      val releaseKeyPassword = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+
+      if (releaseKeystoreFile.exists() && releaseKeystoreFile.length() > 0L &&
+          releaseStorePassword != null && releaseKeyPassword != null) {
+        storeFile = releaseKeystoreFile
+        storePassword = releaseStorePassword
+        keyAlias = releaseKeyAlias
+        keyPassword = releaseKeyPassword
+      } else {
+        // Fallback to CI-generated debug keystore when release signing secrets are not configured
+        storeFile = file("${rootDir}/debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+      }
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
@@ -55,8 +69,8 @@ android {
     compose = true
     buildConfig = true
   }
-  aaptOptions {
-    noCompress("tflite")
+  androidResources {
+    noCompress += "tflite"
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
   lint {

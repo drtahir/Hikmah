@@ -873,7 +873,7 @@ class StudentKitViewModel(application: Application) : AndroidViewModel(applicati
                         val amount = obj.optDouble("amount", 0.0)
                         val category = obj.optString("category", "General")
                         val date = obj.optString("date", "")
-                        val note = if (obj.isNull("note")) null else obj.optString("note", null)
+                        val note = if (obj.isNull("note")) null else obj.optString("note")
                         val isRecurring = obj.optInt("is_recurring", 0)
                         repository.insertExpense(Expense(id, title, amount, category, date, note, isRecurring))
                     }
@@ -889,7 +889,7 @@ class StudentKitViewModel(application: Application) : AndroidViewModel(applicati
                         val amount = obj.optDouble("amount", 0.0)
                         val source = obj.optString("source", "General")
                         val date = obj.optString("date", "")
-                        val note = if (obj.isNull("note")) null else obj.optString("note", null)
+                        val note = if (obj.isNull("note")) null else obj.optString("note")
                         repository.insertIncome(Income(id, title, amount, source, date, note))
                     }
                 }
@@ -920,9 +920,9 @@ class StudentKitViewModel(application: Application) : AndroidViewModel(applicati
                         val amount = obj.optDouble("amount", 0.0)
                         val type = obj.optString("type", "I Lent")
                         val date = obj.optString("date", "")
-                        val dueDate = if (obj.isNull("due_date")) null else obj.optString("due_date", null)
+                        val dueDate = if (obj.isNull("due_date")) null else obj.optString("due_date")
                         val isSettled = obj.optInt("is_settled", 0)
-                        val note = if (obj.isNull("note")) null else obj.optString("note", null)
+                        val note = if (obj.isNull("note")) null else obj.optString("note")
                         repository.insertLoan(Loan(id, personName, amount, type, date, dueDate, isSettled, note))
                     }
                 }
@@ -936,9 +936,9 @@ class StudentKitViewModel(application: Application) : AndroidViewModel(applicati
                         val title = obj.optString("title", "")
                         val targetAmount = obj.optDouble("target_amount", 0.0)
                         val currentAmount = obj.optDouble("current_amount", 0.0)
-                        val targetDate = if (obj.isNull("target_date")) null else obj.optString("target_date", null)
-                        val icon = if (obj.isNull("icon")) null else obj.optString("icon", null)
-                        val color = if (obj.isNull("color")) null else obj.optString("color", null)
+                        val targetDate = if (obj.isNull("target_date")) null else obj.optString("target_date")
+                        val icon = if (obj.isNull("icon")) null else obj.optString("icon")
+                        val color = if (obj.isNull("color")) null else obj.optString("color")
                         repository.insertSavingsGoal(SavingsGoal(id, title, targetAmount, currentAmount, targetDate, icon, color))
                     }
                 }
@@ -966,7 +966,7 @@ class StudentKitViewModel(application: Application) : AndroidViewModel(applicati
                             id = obj.optString("id", java.util.UUID.randomUUID().toString()),
                             committeeId = obj.optString("committee_id", ""),
                             name = obj.optString("name", ""),
-                            phone = if (obj.isNull("phone")) null else obj.optString("phone", null),
+                            phone = if (obj.isNull("phone")) null else obj.optString("phone"),
                             payoutPosition = obj.optInt("payout_position", 1),
                             hasReceived = obj.optInt("has_received", 0)
                         ))
@@ -986,7 +986,7 @@ class StudentKitViewModel(application: Application) : AndroidViewModel(applicati
                             memberId = obj.optString("member_id", ""),
                             month = obj.optString("month", ""),
                             isPaid = obj.optInt("is_paid", 0),
-                            paidDate = if (obj.isNull("paid_date")) null else obj.optString("paid_date", null)
+                            paidDate = if (obj.isNull("paid_date")) null else obj.optString("paid_date")
                         ))
                     }
                     if (paymentsList.isNotEmpty()) {
