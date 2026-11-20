@@ -1,0 +1,6 @@
+{
+  "name": "Hikmah Omni Suite",
+  "description": "All-in-one professional productivity suite integrating Hikmah Islamic knowledge library, financial management, document scanning & OCR, security vaults, clinical tools, and study resources.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
