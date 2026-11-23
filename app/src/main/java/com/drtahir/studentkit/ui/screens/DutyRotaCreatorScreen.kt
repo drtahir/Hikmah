@@ -139,8 +139,10 @@ fun DutyRotaCreatorScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
+                windowInsets = WindowInsets(0.dp),
                 title = {
                     Column {
                         Text(
@@ -258,7 +260,10 @@ fun DutyRotaCreatorScreen(
             )
         },
         bottomBar = {
-            NavigationBar(tonalElevation = 6.dp) {
+            NavigationBar(
+                windowInsets = WindowInsets(0.dp),
+                tonalElevation = 6.dp
+            ) {
                 NavigationBarItem(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },

@@ -60,8 +60,10 @@ fun SettingsScreen(
     val isRegistered = savedName.isNotBlank()
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
+                windowInsets = WindowInsets(0.dp),
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -73,7 +75,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = "Settings & Profile",
-                            fontSize = 20.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -86,10 +88,37 @@ fun SettingsScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    IconButton(onClick = { viewModel.navigateTo(Screen.Dashboard) }) {
+                        Icon(Icons.Default.Home, contentDescription = "Home", tint = MaterialTheme.colorScheme.primary)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
+        },
+        bottomBar = {
+            NavigationBar(windowInsets = WindowInsets(0.dp), tonalElevation = 4.dp) {
+                NavigationBarItem(
+                    selected = true,
+                    onClick = { },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
+                    label = { Text("Settings", fontSize = 11.sp) }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = { viewModel.navigateTo(Screen.About) },
+                    icon = { Icon(Icons.Default.Info, contentDescription = "About") },
+                    label = { Text("About Suite", fontSize = 11.sp) }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = { viewModel.navigateTo(Screen.Dashboard) },
+                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                    label = { Text("Home", fontSize = 11.sp) }
+                )
+            }
         }
     ) { padding ->
         Column(

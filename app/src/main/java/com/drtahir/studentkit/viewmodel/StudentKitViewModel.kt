@@ -33,6 +33,8 @@ sealed class Screen {
     object PassportPhotoStudio : Screen()
     object AssignmentOcrStudio : Screen()
     object PdfTools : Screen()
+    object PdfToWord : Screen()
+    object PdfSignRedact : Screen()
     object InvoiceGenerator : Screen()
     object HospitalClerkAdmin : Screen()
     object DutyRotaCreator : Screen()
@@ -44,6 +46,7 @@ sealed class Screen {
     object UnitConverter : Screen()
     object PasswordManager : Screen()
     object ImageTools : Screen()
+    object VideoAudioStudio : Screen()
     object Notes : Screen()
     object StudyTimer : Screen()
     object Timetable : Screen()
@@ -53,12 +56,14 @@ sealed class Screen {
     object IvCalculator : Screen()
     object DosageCalculator : Screen()
     object GfrCalculator : Screen()
+    object ClinicalScores : Screen()
     object AnatomyAtlas : Screen()
     object PharmacyExam : Screen()
     object NursingExam : Screen()
     object HajjMedicalPrep : Screen()
     object MoavineenHujjajPrep : Screen()
     object IslamicHub : Screen()
+    object IslamicDaily : Screen()
     object IntruderGuard : Screen()
     object SignaturePad : Screen()
     object WatermarkStudio : Screen()
@@ -751,12 +756,19 @@ class StudentKitViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     // --- QURAN CACHE METHODS ---
+    suspend fun getAllCachedQuranVersesSuspend(): List<com.drtahir.studentkit.data.CachedQuranVerse> = repository.getAllCachedQuranVersesSuspend()
     fun getCachedVersesForSurah(surahNumber: Int): Flow<List<com.drtahir.studentkit.data.CachedQuranVerse>> = repository.getCachedVersesForSurah(surahNumber)
     fun getCachedVersesForPage(pageNumber: Int): Flow<List<com.drtahir.studentkit.data.CachedQuranVerse>> = repository.getCachedVersesForPage(pageNumber)
     
     fun insertQuranVerses(verses: List<com.drtahir.studentkit.data.CachedQuranVerse>) {
         viewModelScope.launch {
             repository.insertQuranVerses(verses)
+        }
+    }
+
+    suspend fun insertQuranVersesSuspend(verses: List<com.drtahir.studentkit.data.CachedQuranVerse>) {
+        verses.chunked(1000).forEach { chunk ->
+            repository.insertQuranVerses(chunk)
         }
     }
     
@@ -831,16 +843,230 @@ class StudentKitViewModel(application: Application) : AndroidViewModel(applicati
     val allPosProducts: StateFlow<List<PosProduct>> = repository.allPosProducts.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     fun insertPosProduct(product: PosProduct) = viewModelScope.launch { repository.insertPosProduct(product) }
     fun deletePosProductById(id: String) = viewModelScope.launch { repository.deletePosProductById(id) }
+    fun incrementPosProductStock(productId: String, qty: Int) = viewModelScope.launch { repository.incrementPosProductStock(productId, qty) }
 
     val allPosClients: StateFlow<List<PosClient>> = repository.allPosClients.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     fun insertPosClient(client: PosClient) = viewModelScope.launch { repository.insertPosClient(client) }
     fun deletePosClientById(id: String) = viewModelScope.launch { repository.deletePosClientById(id) }
 
     val allPosOrders: StateFlow<List<PosOrder>> = repository.allPosOrders.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val allPosOrderItems: StateFlow<List<PosOrderItem>> = repository.allPosOrderItems.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     fun insertPosOrder(order: PosOrder) = viewModelScope.launch { repository.insertPosOrder(order) }
     fun insertPosOrderItem(item: PosOrderItem) = viewModelScope.launch { repository.insertPosOrderItem(item) }
+    fun completePosCheckout(order: PosOrder, items: List<PosOrderItem>, redeemedPoints: Int = 0) =
+        viewModelScope.launch { repository.completePosCheckout(order, items, redeemedPoints) }
     fun getPosOrderItems(orderId: String): Flow<List<PosOrderItem>> = repository.getPosOrderItems(orderId)
     fun deletePosOrderById(id: String) = viewModelScope.launch { repository.deletePosOrderById(id) }
+
+    val allPosKhataTransactions: StateFlow<List<PosKhataTransaction>> =
+        repository.allPosKhataTransactions.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    fun settlePosKhataPayment(
+        client: PosClient,
+        amount: Double,
+        paymentMethod: String,
+        note: String = ""
+    ) = viewModelScope.launch {
+        val dateStr = SimpleDateFormat("dd-MMM-yyyy hh:mm a", Locale.getDefault()).format(Date())
+        repository.settlePosKhataPayment(client, amount, paymentMethod, dateStr, note)
+    }
+
+    val allPosPurchaseOrders: StateFlow<List<PosPurchaseOrder>> =
+        repository.allPosPurchaseOrders.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    fun receivePurchaseOrderGrn(po: PosPurchaseOrder, stockUpdates: List<Triple<String, Int, Double>>) =
+        viewModelScope.launch { repository.receivePurchaseOrderGrn(po, stockUpdates) }
+    fun deletePosPurchaseOrderById(id: String) =
+        viewModelScope.launch { repository.deletePosPurchaseOrderById(id) }
+
+    val allPosExpenses: StateFlow<List<PosExpense>> =
+        repository.allPosExpenses.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    fun insertPosExpense(expense: PosExpense) = viewModelScope.launch { repository.insertPosExpense(expense) }
+    fun deletePosExpenseById(id: String) = viewModelScope.launch { repository.deletePosExpenseById(id) }
+
+    val allPosCashDrawers: StateFlow<List<PosCashDrawerSession>> =
+        repository.allPosCashDrawers.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    fun openCashDrawerSession(openingFloat: Double, openedBy: String, notes: String = "") = viewModelScope.launch {
+        val now = SimpleDateFormat("dd-MMM-yyyy hh:mm a", Locale.getDefault()).format(Date())
+        val session = PosCashDrawerSession(
+            id = "REG-${System.currentTimeMillis() % 1000000}",
+            openedAt = now,
+            openedBy = openedBy,
+            openingFloat = openingFloat,
+            expectedCash = openingFloat,
+            notes = notes,
+            status = "OPEN"
+        )
+        repository.insertPosCashDrawerSession(session)
+    }
+    fun closeCashDrawerSession(
+        session: PosCashDrawerSession,
+        expectedCash: Double,
+        countedCash: Double,
+        notes: String
+    ) = viewModelScope.launch {
+        val now = SimpleDateFormat("dd-MMM-yyyy hh:mm a", Locale.getDefault()).format(Date())
+        val closed = session.copy(
+            closedAt = now,
+            expectedCash = expectedCash,
+            countedCash = countedCash,
+            variance = countedCash - expectedCash,
+            notes = notes.ifBlank { session.notes },
+            status = "CLOSED"
+        )
+        repository.insertPosCashDrawerSession(closed)
+    }
+
+    private val _activeCashierName = MutableStateFlow("Administrator")
+    val activeCashierName: StateFlow<String> = _activeCashierName.asStateFlow()
+    private val _activeCashierRole = MutableStateFlow("Store Manager")
+    val activeCashierRole: StateFlow<String> = _activeCashierRole.asStateFlow()
+
+    fun switchCashierByPin(pin: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val emp = repository.getPosEmployeeByPin(pin.trim())
+            if (emp != null) {
+                _activeCashierName.value = emp.fullName
+                _activeCashierRole.value = emp.role
+                onResult(true, "Switched operator to ${emp.fullName} (${emp.role})")
+            } else if (pin.trim() == "0000") {
+                _activeCashierName.value = "Administrator"
+                _activeCashierRole.value = "Owner / Admin"
+                onResult(true, "Switched operator to Administrator")
+            } else {
+                onResult(false, "Invalid Staff PIN. Check Staff Directory for 4-digit PIN.")
+            }
+        }
+    }
+
+    fun processPosReturn(
+        originalOrder: PosOrder,
+        originalItems: List<PosOrderItem>,
+        returnQtyMap: Map<String, Int>,
+        restockItems: Boolean,
+        refundMethod: String,
+        onCompleted: (PosOrder, List<PosOrderItem>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val refundDateStr = SimpleDateFormat("dd-MMM-yyyy hh:mm a", Locale.getDefault()).format(Date())
+            val creditNoteId = "CRN-${System.currentTimeMillis() % 1000000}"
+
+            val creditItems = mutableListOf<PosOrderItem>()
+            var refundSubtotal = 0.0
+
+            originalItems.forEach { item ->
+                val returnQty = (returnQtyMap[item.id] ?: 0).coerceIn(0, (item.quantity - item.returnedQty).coerceAtLeast(0))
+                if (returnQty > 0) {
+                    val newReturnedTotal = item.returnedQty + returnQty
+                    repository.updatePosOrderItemReturnedQty(item.id, newReturnedTotal)
+                    if (restockItems && !item.productId.startsWith("custom_")) {
+                        repository.incrementPosProductStock(item.productId, returnQty)
+                    }
+                    val lineAmount = item.price * returnQty
+                    refundSubtotal += lineAmount
+                    creditItems.add(
+                        PosOrderItem(
+                            id = UUID.randomUUID().toString(),
+                            orderId = creditNoteId,
+                            productId = item.productId,
+                            name = "[RETURN] ${item.name}",
+                            quantity = returnQty,
+                            price = -item.price,
+                            costPrice = -item.costPrice,
+                            returnedQty = 0
+                        )
+                    )
+                }
+            }
+
+            if (creditItems.isNotEmpty()) {
+                val origSubtotal = originalOrder.subtotal.coerceAtLeast(0.01)
+                val ratio = (refundSubtotal / origSubtotal).coerceIn(0.0, 1.0)
+                val proratedDiscount = originalOrder.discount * ratio
+                val proratedTax = originalOrder.tax * ratio
+                val netRefund = ((refundSubtotal - proratedDiscount) + proratedTax).coerceAtLeast(0.0)
+
+                val allItemsAfter = repository.getPosOrderItemsSuspend(originalOrder.id)
+                val allFullyReturned = allItemsAfter.isNotEmpty() && allItemsAfter.all { it.returnedQty >= it.quantity }
+                repository.updatePosOrderStatus(originalOrder.id, if (allFullyReturned) "Returned" else "Partial Return")
+
+                val creditNoteOrder = PosOrder(
+                    id = creditNoteId,
+                    date = refundDateStr,
+                    clientId = originalOrder.clientId,
+                    subtotal = -refundSubtotal,
+                    tax = -proratedTax,
+                    discount = -proratedDiscount,
+                    total = -netRefund,
+                    documentType = "Credit Note",
+                    paymentMethod = refundMethod,
+                    paymentBreakdown = "Refund for ${originalOrder.id}",
+                    paidAmount = netRefund,
+                    changeDue = 0.0,
+                    dueAmount = 0.0,
+                    status = "Refunded",
+                    cashierName = _activeCashierName.value
+                )
+                repository.insertPosOrder(creditNoteOrder)
+                creditItems.forEach { repository.insertPosOrderItem(it) }
+
+                if (!originalOrder.clientId.isNullOrBlank()) {
+                    val balanceReversal = if (originalOrder.dueAmount > 0.0) -minOf(originalOrder.dueAmount, netRefund) else 0.0
+                    val ptsReversal = -(netRefund / 100.0).toInt().coerceAtLeast(0)
+                    repository.adjustPosClientLedger(originalOrder.clientId, balanceReversal, -netRefund, ptsReversal)
+                    if (balanceReversal < 0.0) {
+                        repository.insertPosKhataTransaction(
+                            PosKhataTransaction(
+                                id = "REV-${System.currentTimeMillis() % 1000000}",
+                                clientId = originalOrder.clientId,
+                                clientName = "Customer (${originalOrder.id})",
+                                date = refundDateStr,
+                                type = "Credit Reversal",
+                                amount = -balanceReversal,
+                                referenceId = creditNoteId,
+                                paymentMethod = refundMethod,
+                                note = "Khata reduced due to $creditNoteId"
+                            )
+                        )
+                    }
+                }
+                onCompleted(creditNoteOrder, creditItems)
+            }
+        }
+    }
+
+    // PACK C: ENTERPRISE JSON BACKUP/RESTORE & BULK CSV CATALOG
+    fun exportPosBackupJson(onComplete: (String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                onComplete(repository.exportPosBackupJson())
+            } catch (_: Exception) {
+                onComplete(null)
+            }
+        }
+    }
+
+    fun restorePosBackupJson(jsonString: String, onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val res = repository.restorePosBackupJson(jsonString)
+            onComplete(res.first, res.second)
+        }
+    }
+
+    fun exportPosProductsCsv(onComplete: (String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                onComplete(repository.exportPosProductsCsv())
+            } catch (_: Exception) {
+                onComplete(null)
+            }
+        }
+    }
+
+    fun importPosProductsCsv(csvText: String, onComplete: (Int) -> Unit) {
+        viewModelScope.launch {
+            val count = repository.importPosProductsCsv(csvText)
+            onComplete(count)
+        }
+    }
 
     // POS Employees & Staff
     val allPosEmployees: StateFlow<List<PosEmployee>> = repository.allPosEmployees.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())

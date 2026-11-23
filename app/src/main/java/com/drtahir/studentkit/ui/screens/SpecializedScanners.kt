@@ -2484,7 +2484,6 @@ fun SimulatedCameraOverlay(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .systemBarsPadding()
     ) {
         // Real-Time Camera Preview Area or Custom Mock viewport if permission not granted
         if (cameraPermissionState.status.isGranted) {

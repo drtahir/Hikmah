@@ -41,8 +41,10 @@ fun AboutScreen(
     val devWhatsAppRaw = "923465552678"
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
+                windowInsets = WindowInsets(0.dp),
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -54,7 +56,7 @@ fun AboutScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = "About Hikmah Omni Suite",
-                            fontSize = 20.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -64,10 +66,37 @@ fun AboutScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    IconButton(onClick = { viewModel.navigateTo(Screen.Dashboard) }) {
+                        Icon(Icons.Default.Home, contentDescription = "Home", tint = MaterialTheme.colorScheme.primary)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
+        },
+        bottomBar = {
+            NavigationBar(windowInsets = WindowInsets(0.dp), tonalElevation = 4.dp) {
+                NavigationBarItem(
+                    selected = false,
+                    onClick = { viewModel.navigateTo(Screen.Settings) },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
+                    label = { Text("Settings", fontSize = 11.sp) }
+                )
+                NavigationBarItem(
+                    selected = true,
+                    onClick = { },
+                    icon = { Icon(Icons.Default.Info, contentDescription = "About") },
+                    label = { Text("About Suite", fontSize = 11.sp) }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = { viewModel.navigateTo(Screen.Dashboard) },
+                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                    label = { Text("Home", fontSize = 11.sp) }
+                )
+            }
         }
     ) { padding ->
         Column(
@@ -233,14 +262,15 @@ fun AboutScreen(
                 )
             )
 
-            // Module 2: Documents & 13-in-1 Master PDF Suite
+            // Module 2: Documents & 14-in-1 Master PDF Suite
             AboutModuleCard(
-                title = "2. Documents, Scanning & 13-in-1 Master PDF Suite (دستاویزات اور پی ڈی ایف)",
+                title = "2. Documents, Scanning & 14-in-1 Master PDF Suite (دستاویزات اور پی ڈی ایف)",
                 icon = Icons.Default.PictureAsPdf,
                 iconColor = Color(0xFF1E88E5),
-                description = "High-definition mobile scanning, resume building, and 13 offline PDF power tools:",
+                description = "High-definition mobile scanning, resume building, and 14 offline PDF power tools:",
                 features = listOf(
-                    "13-in-1 Master PDF Suite Handlers:\n" +
+                    "14-in-1 Master PDF Suite Handlers:\n" +
+                    "  • PDF to Editable Word (.docx): Convert any digital or scanned PDF into an editable Word document preserving headings, lists, and tables via Hybrid Native + Layout OCR.\n" +
                     "  • Merge PDFs: Combine multiple chapters, slides, or admission challans into one single PDF.\n" +
                     "  • Split & Extract: Pick specific pages or ranges and save them into a separate document.\n" +
                     "  • Compress PDF: Reduce large PDF files from MBs to small KBs for easy sharing on WhatsApp or email.\n" +

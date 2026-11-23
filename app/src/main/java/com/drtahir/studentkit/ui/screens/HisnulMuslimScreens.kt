@@ -102,8 +102,10 @@ fun HisnulMuslimReaderScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
+                windowInsets = WindowInsets(0.dp),
                 title = {
                     Column {
                         Text(

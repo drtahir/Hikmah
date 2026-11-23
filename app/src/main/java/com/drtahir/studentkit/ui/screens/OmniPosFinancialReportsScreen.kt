@@ -49,11 +49,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.drtahir.studentkit.data.BluetoothThermalPrinterHelper
 import com.drtahir.studentkit.data.PosBusinessProfile
-import com.drtahir.studentkit.data.getSavedBusinessProfile
+import com.drtahir.studentkit.data.PosCashDrawerSession
 import com.drtahir.studentkit.data.PosClient
+import com.drtahir.studentkit.data.PosExpense
 import com.drtahir.studentkit.data.PosOrder
 import com.drtahir.studentkit.data.PosOrderItem
 import com.drtahir.studentkit.data.PosProduct
+import com.drtahir.studentkit.data.PosPurchaseOrder
+import com.drtahir.studentkit.data.getSavedBusinessProfile
 import com.drtahir.studentkit.viewmodel.StudentKitViewModel
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -195,6 +198,10 @@ fun OmniPosFinancialReportsScreen(viewModel: StudentKitViewModel) {
     val products by viewModel.allPosProducts.collectAsState(initial = emptyList())
     val clients by viewModel.allPosClients.collectAsState(initial = emptyList())
     val orders by viewModel.allPosOrders.collectAsState(initial = emptyList())
+    val orderItems by viewModel.allPosOrderItems.collectAsState(initial = emptyList())
+    val posExpenses by viewModel.allPosExpenses.collectAsState(initial = emptyList())
+    val purchaseOrders by viewModel.allPosPurchaseOrders.collectAsState(initial = emptyList())
+    val cashDrawers by viewModel.allPosCashDrawers.collectAsState(initial = emptyList())
 
     var selectedReportType by remember { mutableStateOf(PosReportType.Z_REPORT) }
     var selectedCategoryFilter by remember { mutableStateOf("All Reports") }
@@ -206,7 +213,7 @@ fun OmniPosFinancialReportsScreen(viewModel: StudentKitViewModel) {
     val categories = listOf("All Reports", "Registers", "Financials", "Sales", "Inventory", "Credit", "Procurement", "Tax & Legal", "Staff")
 
     // Automatically generate report when selections or data change
-    LaunchedEffect(selectedReportType, selectedTimeRange, products, clients, orders) {
+    LaunchedEffect(selectedReportType, selectedTimeRange, products, clients, orders, orderItems, posExpenses, purchaseOrders, cashDrawers) {
         activeReportData = generatePosReport(
             context = context,
             type = selectedReportType,
@@ -214,7 +221,11 @@ fun OmniPosFinancialReportsScreen(viewModel: StudentKitViewModel) {
             profile = businessProfile,
             products = products,
             clients = clients,
-            orders = orders
+            orders = orders,
+            orderItems = orderItems,
+            posExpenses = posExpenses,
+            purchaseOrders = purchaseOrders,
+            cashDrawers = cashDrawers
         )
     }
 
@@ -228,10 +239,19 @@ fun OmniPosFinancialReportsScreen(viewModel: StudentKitViewModel) {
         }
     }
 
-    // Top Level Metrics
-    val totalRevenue = orders.sumOf { it.total }
-    val totalOrders = orders.size
-    val estimatedCogs = totalRevenue * 0.58
+    // Top Level Metrics (exclude Estimates; Credit Notes already carry negative totals)
+    val revenueOrders = orders.filter { it.documentType != "Estimate" }
+    val validSaleOrderIds = revenueOrders.filter { it.documentType != "Credit Note" }.map { it.id }.toSet()
+    val validSaleItems = orderItems.filter { it.orderId in validSaleOrderIds }
+    val totalRevenue = revenueOrders.sumOf { it.total }
+    val totalOrders = revenueOrders.size
+    val productMap = products.associateBy { it.id }
+    val realCogs = validSaleItems.sumOf { item ->
+        val netQty = (item.quantity - item.returnedQty).coerceAtLeast(0)
+        val unitCost = if (item.costPrice > 0.0) item.costPrice else (productMap[item.productId]?.costPrice ?: (item.price * 0.58))
+        unitCost * netQty
+    }
+    val estimatedCogs = if (validSaleItems.isNotEmpty()) realCogs.coerceAtLeast(0.0) else totalRevenue * 0.58
     val grossProfit = totalRevenue - estimatedCogs
     val grossMarginPct = if (totalRevenue > 0.0) (grossProfit / totalRevenue) * 100.0 else 0.0
 
@@ -1280,36 +1300,91 @@ fun generatePosReport(
     profile: PosBusinessProfile,
     products: List<PosProduct>,
     clients: List<PosClient>,
-    orders: List<PosOrder>
+    orders: List<PosOrder>,
+    orderItems: List<PosOrderItem> = emptyList(),
+    posExpenses: List<PosExpense> = emptyList(),
+    purchaseOrders: List<PosPurchaseOrder> = emptyList(),
+    cashDrawers: List<PosCashDrawerSession> = emptyList()
 ): GeneratedReportData {
     val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
     val curr = profile.currency
 
-    val totalRevenue = orders.sumOf { it.total }
-    val totalOrders = orders.size
-    val totalTax = orders.sumOf { it.tax }
-    val totalDiscounts = orders.sumOf { it.discount }
-    val totalSubtotal = orders.sumOf { it.subtotal }
+    val activeOrders = orders.filter { it.documentType != "Estimate" }
+    val totalRevenue = activeOrders.sumOf { it.total }
+    val totalOrders = activeOrders.size
+    val totalTax = activeOrders.sumOf { it.tax }
+    val totalDiscounts = activeOrders.sumOf { it.discount }
+    val totalSubtotal = activeOrders.sumOf { it.subtotal }
 
-    val openingFloat = 5000.0
-    val cashInTopups = 1000.0
-    val cashOutPetty = 350.0
+    val latestDrawer = cashDrawers.firstOrNull()
+    val openingFloat = latestDrawer?.openingFloat ?: 0.0
+    val cashInTopups = posExpenses.filter { it.category.equals("Cash In Top-up", true) }.sumOf { it.amount }
+    val cashOutPetty = posExpenses.filter {
+        !it.category.equals("Cash In Top-up", true) && it.paymentSource.equals("Cash Drawer", true)
+    }.sumOf { it.amount }
 
-    // Realistic tender distributions
-    val cashSales = totalRevenue * 0.60
-    val cardSales = totalRevenue * 0.25
-    val qrWalletSales = totalRevenue * 0.10
-    val creditSales = totalRevenue * 0.05
+    // Real tender breakdown from persisted PosOrder records
+    var cashSales = 0.0
+    var cardSales = 0.0
+    var qrWalletSales = 0.0
+    var creditSales = 0.0
+    activeOrders.forEach { order ->
+        val collected = order.total - order.dueAmount
+        when {
+            order.paymentMethod.contains("Credit", ignoreCase = true) || order.paymentMethod.contains("Khata", ignoreCase = true) -> {
+                if (order.documentType == "Credit Note" || order.total < 0) {
+                    creditSales += order.total
+                } else if (order.dueAmount > 0.0) {
+                    creditSales += order.dueAmount
+                    cashSales += collected.coerceAtLeast(0.0)
+                } else {
+                    creditSales += order.total
+                }
+            }
+            order.paymentMethod.contains("Card", ignoreCase = true) -> cardSales += order.total
+            order.paymentMethod.contains("QR", ignoreCase = true) || order.paymentMethod.contains("Wallet", ignoreCase = true) -> qrWalletSales += order.total
+            order.paymentMethod.contains("Split", ignoreCase = true) -> {
+                var matchedAny = false
+                order.paymentBreakdown.split("|").forEach { part ->
+                    val seg = part.trim()
+                    val num = seg.substringAfter(":").trim().toDoubleOrNull() ?: 0.0
+                    if (num != 0.0) {
+                        matchedAny = true
+                        when {
+                            seg.startsWith("Cash", ignoreCase = true) -> cashSales += num
+                            seg.startsWith("Card", ignoreCase = true) -> cardSales += num
+                            seg.startsWith("QR", ignoreCase = true) -> qrWalletSales += num
+                            else -> creditSales += num
+                        }
+                    }
+                }
+                if (!matchedAny) cashSales += order.total
+                creditSales += order.dueAmount
+            }
+            else -> {
+                cashSales += (order.total - order.dueAmount)
+                creditSales += order.dueAmount
+            }
+        }
+    }
 
     val expectedCashInDrawer = openingFloat + cashSales + cashInTopups - cashOutPetty
-    val actualCashCounted = expectedCashInDrawer
-    val variance = actualCashCounted - expectedCashInDrawer
+    val actualCashCounted = if (latestDrawer?.status == "CLOSED") latestDrawer.countedCash else expectedCashInDrawer
+    val variance = if (latestDrawer?.status == "CLOSED") latestDrawer.variance else (actualCashCounted - expectedCashInDrawer)
 
-    // Cost of Goods Sold & Expenses
-    val estimatedCogs = totalRevenue * 0.58
+    // Real Cost of Goods Sold (using recorded item costPrice or product wholesale cost, excluding Credit Note lines since returnedQty adjusts originals)
+    val productMap = products.associateBy { it.id }
+    val validSaleOrderIds = activeOrders.filter { it.documentType != "Credit Note" }.map { it.id }.toSet()
+    val validSaleItems = orderItems.filter { it.orderId in validSaleOrderIds }
+    val computedCogs = validSaleItems.sumOf { item ->
+        val netQty = (item.quantity - item.returnedQty).coerceAtLeast(0)
+        val unitCost = if (item.costPrice > 0.0) item.costPrice else (productMap[item.productId]?.costPrice ?: (item.price * 0.58))
+        unitCost * netQty
+    }
+    val estimatedCogs = if (validSaleItems.isNotEmpty()) computedCogs.coerceAtLeast(0.0) else totalRevenue * 0.58
     val grossProfit = totalRevenue - estimatedCogs
     val grossMarginPct = if (totalRevenue > 0.0) (grossProfit / totalRevenue) * 100.0 else 0.0
-    val storeOverheads = 6500.0
+    val storeOverheads = posExpenses.filter { !it.category.equals("Cash In Top-up", true) }.sumOf { it.amount }
     val netOperatingProfit = grossProfit - storeOverheads
     val netMarginPct = if (totalRevenue > 0.0) (netOperatingProfit / totalRevenue) * 100.0 else 0.0
 
@@ -1616,9 +1691,14 @@ fun generatePosReport(
 
         PosReportType.ABC_INVENTORY_VALUATION -> {
             val totalStockQty = products.sumOf { it.stock }
-            val totalStockCost = products.sumOf { it.stock * (it.price * 0.7) }
+            val totalStockCost = products.sumOf { p ->
+                val unitCost = if (p.costPrice > 0.0) p.costPrice else (p.price * 0.7)
+                p.stock * unitCost
+            }
             val totalStockRetail = products.sumOf { it.stock * it.price }
             val potentialMargin = totalStockRetail - totalStockCost
+            val expiredCount = products.count { it.expiryStatusCode() == 2 }
+            val nearExpiryCount = products.count { it.expiryStatusCode() == 1 }
 
             val summary = listOf(
                 "Total Live SKU Count" to "${products.size} Products",
@@ -1626,13 +1706,21 @@ fun generatePosReport(
                 "Total Stock Value (at Cost)" to "$curr ${String.format("%.2f", totalStockCost)}",
                 "Total Stock Value (at Retail)" to "$curr ${String.format("%.2f", totalStockRetail)}",
                 "Unrealized Gross Margin" to "$curr ${String.format("%.2f", potentialMargin)} (${String.format("%.1f", if (totalStockRetail > 0.0) (potentialMargin / totalStockRetail) * 100.0 else 0.0)}%)",
-                "Class A Items (Top 80% Rev)" to "${(products.size * 0.2).toInt().coerceAtLeast(1)} High-Velocity SKUs"
+                "Low Stock Alerts" to "${products.count { it.stock <= it.minStockAlert }} SKUs Need Reorder",
+                "Expiry & Batch Watch" to "$expiredCount Expired • $nearExpiryCount Near Expiry (<60d)"
             )
 
-            val headers = listOf("Product SKU", "Stock", "Cost ($curr)", "Retail ($curr)", "Class")
-            val rows = products.take(15).mapIndexed { idx, p ->
+            val headers = listOf("Product SKU", "Stock", "Cost ($curr)", "Retail ($curr)", "Class / Exp")
+            val rows = products.sortedByDescending { it.stock * it.price }.take(15).mapIndexed { idx, p ->
                 val cls = if (idx < 3) "A (80%)" else if (idx < 8) "B (15%)" else "C (5%)"
-                listOf(p.name, "${p.stock} ${p.unit}", String.format("%.0f", p.price * 0.7), String.format("%.0f", p.price), cls)
+                val uCost = if (p.costPrice > 0.0) p.costPrice else (p.price * 0.7)
+                val expTag = when (p.expiryStatusCode()) {
+                    2 -> " [EXP]"
+                    1 -> " [<60d]"
+                    else -> ""
+                }
+                val batchMeta = if (p.batchNumber.isNotBlank()) " [B:${p.batchNumber.take(8)}]" else ""
+                listOf("${p.name}$batchMeta", "${p.stock} ${p.unit}", String.format("%.0f", uCost), String.format("%.0f", p.price), "$cls$expTag")
             }
 
             val thermal = buildString {
@@ -1644,6 +1732,7 @@ fun generatePosReport(
                 appendLine("Stock Cost:   $curr ${totalStockCost.toInt()}")
                 appendLine("Stock Retail: $curr ${totalStockRetail.toInt()}")
                 appendLine("Margin Spread:$curr ${potentialMargin.toInt()}")
+                appendLine("Expired: $expiredCount | Soon: $nearExpiryCount")
                 appendLine("================================")
             }
 
@@ -1653,11 +1742,12 @@ fun generatePosReport(
                 appendLine("================================================================================")
                 appendLine("Total Catalog SKUs: ${products.size}  |  Warehouse Units: $totalStockQty")
                 appendLine("Asset Valuation at Cost: $curr ${String.format("%.2f", totalStockCost)}  |  At Retail: $curr ${String.format("%.2f", totalStockRetail)}")
+                appendLine("Expiry & Batch Watch: $expiredCount Expired  |  $nearExpiryCount Expiring within 60 days")
                 appendLine("--------------------------------------------------------------------------------")
-                appendLine(String.format("%-32s %10s %15s %15s %8s", "Product Description", "Stock", "Cost Val", "Retail Val", "Class"))
+                appendLine(String.format("%-32s %10s %13s %13s %10s", "Product Description", "Stock", "Cost Val", "Retail Val", "Class"))
                 appendLine("--------------------------------------------------------------------------------")
                 rows.forEach { r ->
-                    appendLine(String.format("%-32s %10s %15s %15s %8s", r[0].take(30), r[1], r[2], r[3], r[4]))
+                    appendLine(String.format("%-32s %10s %13s %13s %10s", r[0].take(30), r[1], r[2], r[3], r[4]))
                 }
                 appendLine("================================================================================")
             }
@@ -1711,47 +1801,127 @@ fun generatePosReport(
 
         PosReportType.KHATA_AGING_RECEIVABLES -> {
             val khataCustomers = clients.filter { it.type.equals("Customer", true) }
-            val totalReceivables = 48500.0
+            val totalReceivables = khataCustomers.sumOf { it.creditBalance }
+            val overdueAccounts = khataCustomers.filter { it.creditBalance > 0.0 }.sortedByDescending { it.creditBalance }
 
             val summary = listOf(
                 "Total Outstanding Khata" to "$curr ${String.format("%.2f", totalReceivables)}",
-                "Active Credit Accounts" to "${khataCustomers.size.coerceAtLeast(3)} Customers",
-                "0 - 30 Days (Current)" to "$curr 28,000.00 (Healthy)",
-                "31 - 60 Days (Follow-up)" to "$curr 12,500.00",
-                "61 - 90 Days (Overdue)" to "$curr 5,500.00",
-                "90+ Days (Critical Alert)" to "$curr 2,500.00"
+                "Customers With Balance" to "${overdueAccounts.size} of ${khataCustomers.size} Customers",
+                "Total Loyalty Points Issued" to "${khataCustomers.sumOf { it.loyaltyPoints }} Pts",
+                "Lifetime Customer Spend" to "$curr ${String.format("%.2f", khataCustomers.sumOf { it.totalSpent })}"
             )
 
-            val headers = listOf("Client Name", "Phone", "Overdue ($curr)", "Aging Tier")
-            val rows = listOf(
-                listOf("Metro City Clinic", "0321-4567890", "28,000.00", "0-30 Days"),
-                listOf("TechLogix Solutions", "0300-1122334", "12,500.00", "31-60 Days"),
-                listOf("Al-Rehman Traders", "0333-5556677", "5,500.00", "61-90 Days"),
-                listOf("Gulberg Auto Care", "0345-9988776", "2,500.00", "90+ Days")
-            )
+            val headers = listOf("Customer Name", "Phone", "Khata Due ($curr)", "Loyalty Pts")
+            val rows = if (overdueAccounts.isEmpty()) {
+                listOf(listOf("All Customer Accounts Cleared", "-", "0.00", "-"))
+            } else {
+                overdueAccounts.map { c ->
+                    listOf(c.name, c.phone.ifBlank { "-" }, String.format("%.2f", c.creditBalance), "${c.loyaltyPoints} pts")
+                }
+            }
 
             val thermal = buildString {
                 appendLine("================================")
-                appendLine("   KHATA RECEIVABLES AGING      ")
+                appendLine("   KHATA RECEIVABLES LEDGER     ")
                 appendLine("================================")
-                appendLine("Total Overdue: $curr ${totalReceivables.toInt()}")
-                appendLine("0-30 Days:     $curr 28,000")
-                appendLine("31-60 Days:    $curr 12,500")
-                appendLine("61-90 Days:    $curr 5,500")
-                appendLine("90+ Days:      $curr 2,500")
+                appendLine("Total Due: $curr ${String.format("%.2f", totalReceivables)}")
+                appendLine("Due Accounts: ${overdueAccounts.size}")
+                overdueAccounts.take(10).forEach { c ->
+                    appendLine("${c.name.take(18)}: $curr ${c.creditBalance.toInt()}")
+                }
                 appendLine("================================")
             }
 
             val a4 = buildString {
                 appendLine("================================================================================")
-                appendLine("                 ACCOUNTS RECEIVABLE & KHATA AGING LEDGER                       ")
+                appendLine("                 ACCOUNTS RECEIVABLE & KHATA LEDGER SUMMARY                     ")
                 appendLine("================================================================================")
                 appendLine("Total Receivables: $curr ${String.format("%.2f", totalReceivables)}")
                 rows.forEach { r ->
-                    appendLine(String.format("%-30s %15s %15s %15s", r[0], r[1], r[2], r[3]))
+                    appendLine(String.format("%-30s %15s %15s %15s", r[0].take(28), r[1], r[2], r[3]))
                 }
             }
 
+            return GeneratedReportData(type, timeRange, dateStr, summary, headers, rows, thermal, a4, a4, thermal)
+        }
+
+        PosReportType.SUPPLIER_PAYABLES_GRN -> {
+            val suppliers = clients.filter { it.type.equals("Supplier", true) }
+            val totalPoSpend = purchaseOrders.sumOf { it.totalCost }
+            val totalSupplierDues = suppliers.sumOf { it.creditBalance }
+
+            val summary = listOf(
+                "Total GRN Purchase Orders" to "${purchaseOrders.size} POs",
+                "Total Procurement Spend" to "$curr ${String.format("%.2f", totalPoSpend)}",
+                "Total Paid to Vendors" to "$curr ${String.format("%.2f", purchaseOrders.sumOf { it.paidAmount })}",
+                "Outstanding Vendor Payables" to "$curr ${String.format("%.2f", totalSupplierDues)}"
+            )
+
+            val headers = listOf("PO #", "Supplier", "Total Cost ($curr)", "Status")
+            val rows = if (purchaseOrders.isEmpty()) {
+                listOf(listOf("No GRN Purchases Yet", "-", "0.00", "Use Stock -> Suppliers & GRN"))
+            } else {
+                purchaseOrders.take(20).map { po ->
+                    listOf(po.id, po.supplierName, String.format("%.2f", po.totalCost), po.status)
+                }
+            }
+
+            val thermal = buildString {
+                appendLine("================================")
+                appendLine("   SUPPLIER PROCUREMENT & GRN   ")
+                appendLine("================================")
+                appendLine("Orders: ${purchaseOrders.size}")
+                appendLine("Spend:  $curr ${totalPoSpend.toInt()}")
+                appendLine("Payable:$curr ${totalSupplierDues.toInt()}")
+                appendLine("================================")
+            }
+
+            val a4 = buildString {
+                appendLine("================================================================================")
+                appendLine("                    SUPPLIER PURCHASES (GRN) & PAYABLES LEDGER                  ")
+                appendLine("================================================================================")
+                appendLine("Total Spend: $curr ${String.format("%.2f", totalPoSpend)}  |  Vendor Payables: $curr ${String.format("%.2f", totalSupplierDues)}")
+                rows.forEach { r ->
+                    appendLine(String.format("%-16s %-26s %16s %12s", r[0], r[1].take(24), r[2], r[3]))
+                }
+            }
+
+            return GeneratedReportData(type, timeRange, dateStr, summary, headers, rows, thermal, a4, a4, thermal)
+        }
+
+        PosReportType.CASHIER_PRODUCTIVITY -> {
+            val byCashier = activeOrders.groupBy { it.cashierName.ifBlank { "Administrator" } }
+            val summary = listOf(
+                "Active Cashiers Tracked" to "${byCashier.size} Operator(s)",
+                "Total Orders Processed" to "$totalOrders Tickets",
+                "Total Net Sales" to "$curr ${String.format("%.2f", totalRevenue)}",
+                "Average Ticket Size" to if (totalOrders > 0) "$curr ${String.format("%.2f", totalRevenue / totalOrders)}" else "$curr 0.00"
+            )
+            val headers = listOf("Cashier / Operator", "Tickets", "Sales Volume ($curr)")
+            val rows = if (byCashier.isEmpty()) {
+                listOf(listOf("Administrator", "0", "0.00"))
+            } else {
+                byCashier.entries.sortedByDescending { it.value.sumOf { o -> o.total } }.map { (name, list) ->
+                    listOf(name, "${list.size}", String.format("%.2f", list.sumOf { it.total }))
+                }
+            }
+            val thermal = buildString {
+                appendLine("================================")
+                appendLine("     CASHIER PRODUCTIVITY       ")
+                appendLine("================================")
+                rows.forEach { r ->
+                    appendLine("${r[0].take(18)} (${r[1]}): $curr ${r[2]}")
+                }
+                appendLine("================================")
+            }
+            val a4 = buildString {
+                appendLine("================================================================================")
+                appendLine("                        CASHIER & OPERATOR AUDIT REPORT                         ")
+                appendLine("================================================================================")
+                rows.forEach { r ->
+                    appendLine(String.format("%-32s %12s %20s", r[0], r[1], r[2]))
+                }
+            }
             return GeneratedReportData(type, timeRange, dateStr, summary, headers, rows, thermal, a4, a4, thermal)
         }
 
@@ -1769,9 +1939,10 @@ fun generatePosReport(
             val headers = listOf("Parameter / SKU", "Activity Count", "Total ($curr)")
             val rows = listOf(
                 listOf("Gross Sales Volume", "$totalOrders", String.format("%.2f", totalRevenue)),
-                listOf("Estimated Inventory COGS", "$totalOrders", String.format("%.2f", estimatedCogs)),
+                listOf("Actual Inventory COGS", "$totalOrders", String.format("%.2f", estimatedCogs)),
+                listOf("Store Operating Expenses", "${posExpenses.size}", String.format("%.2f", storeOverheads)),
                 listOf("Gross Operational Margin", "$totalOrders", String.format("%.2f", grossProfit)),
-                listOf("Tax & VAT Contribution", "$totalOrders", String.format("%.2f", totalTax))
+                listOf("Net Profit", "$totalOrders", String.format("%.2f", netOperatingProfit))
             )
 
             val thermal = buildString {

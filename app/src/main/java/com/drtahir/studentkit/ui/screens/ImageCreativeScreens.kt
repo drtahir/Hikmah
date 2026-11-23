@@ -437,7 +437,6 @@ fun WatermarkStudioScreen(viewModel: StudentKitViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFFFAFAFA))
-            .navigationBarsPadding()
     ) {
         Column(
             modifier = Modifier

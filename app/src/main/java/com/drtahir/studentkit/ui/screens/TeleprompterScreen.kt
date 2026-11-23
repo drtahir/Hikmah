@@ -435,6 +435,7 @@ fun TeleprompterLibraryView(
     onDeleteScript: (TeleprompterScript) -> Unit
 ) {
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         floatingActionButton = {
             Column(
                 horizontalAlignment = Alignment.End,
@@ -1695,8 +1696,10 @@ fun PracticeAudioPrompterView(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
+                windowInsets = WindowInsets(0.dp),
                 title = { Text("Speech Practice Mode", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onClose) {

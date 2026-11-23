@@ -1,14 +1,9 @@
-import React from 'react';
-import { ScreenType, UserProfile } from '../types';
-import { getHijriDate } from '../data/islamicData';
+import React, { useState, useRef, useEffect } from 'react';
+import { ScreenType, ThemePreference } from '../types';
+import { getScreenMeta } from '../data/navigationCatalog';
 import {
-  ArrowLeft,
-  Moon,
-  Sun,
-  Settings as SettingsIcon,
-  Search,
-  BookOpen,
-  Home
+  ArrowLeft, Moon, Sun, Monitor, Settings as SettingsIcon, BookOpen,
+  Home, MoreVertical, LayoutGrid, Timer, Info, Check, Smartphone, Maximize2
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -16,10 +11,11 @@ interface HeaderProps {
   onNavigate: (screen: ScreenType) => void;
   onBack: () => void;
   canGoBack: boolean;
-  profile: UserProfile;
-  searchQuery: string;
-  onSearchChange: (q: string) => void;
-  toggleTheme: () => void;
+  themePreference: ThemePreference;
+  onChangeTheme: (pref: ThemePreference) => void;
+  onOpenAllServices: () => void;
+  viewportMode: 'mobile' | 'wide';
+  onToggleViewportMode: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -27,166 +23,187 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigate,
   onBack,
   canGoBack,
-  profile,
-  searchQuery,
-  onSearchChange,
-  toggleTheme
+  themePreference,
+  onChangeTheme,
+  onOpenAllServices,
+  viewportMode,
+  onToggleViewportMode,
 }) => {
-  const hijri = getHijriDate(profile.hijriOffset);
+  const [showThemeMenu, setShowThemeMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
-  const getScreenTitle = (screen: ScreenType): string => {
-    switch (screen) {
-      case 'Dashboard': return 'Hikmah Omni Suite';
-      case 'ExpenseTracker': return 'Expense Tracker';
-      case 'IncomeTracker': return 'Income Tracker';
-      case 'UtilityBills': return 'Utility Bills Ledger';
-      case 'ZakatCalculator': return 'Zakat Calculator';
-      case 'BcCommittee': return 'BC Committees (Kameti)';
-      case 'LoanTracker': return 'Loan & Debt Ledger';
-      case 'SavingsGoals': return 'Savings Goals';
-      case 'FinanceReportAndBackup': return 'Financial Reports & Backup';
-      case 'CvBuilder': return 'CV Resume Builder A4';
-      case 'InvoiceGenerator': return 'Professional Invoice Maker';
-      case 'DutyRotaCreator': return 'Hospital Duty Rota Creator';
-      case 'HospitalClerkAdmin': return 'Hospital Clerk & MS Kit';
-      case 'IdCardScanner': return 'ID Card & Document Scanner';
-      case 'AssignmentOcrStudio': return 'Handwritten Assignment OCR Studio';
-      case 'SignaturePad': return 'Digital Signature & Stamp Pad';
-      case 'Calculator': return 'Scientific Calculator';
-      case 'UnitConverter': return 'Universal Unit Converter';
-      case 'QrGenerator': return 'QR Code Studio';
-      case 'BarcodeGenerator': return 'Barcode Generator';
-      case 'PasswordManager': return 'Encrypted Password Vault';
-      case 'AgeCalculator': return 'Age & Life Milestone Calculator';
-      case 'Steganography': return 'Image Steganography Studio';
-      case 'Teleprompter': return 'Teleprompter Pro';
-      case 'Notes': return 'Clinical & Lecture Notes';
-      case 'StudyTimer': return 'Pomodoro Focus Timer';
-      case 'Timetable': return 'Weekly Lesson & Duty Timetable';
-      case 'BmiCalculator': return 'BMI & Health Wellness';
-      case 'GpaCalculator': return 'GPA & CGPA Calculator';
-      case 'IvCalculator': return 'IV Infusion Rate Calculator';
-      case 'DosageCalculator': return 'Pediatric & Adult Drug Dosage';
-      case 'GfrCalculator': return 'GFR Renal Cockcroft-Gault';
-      case 'AnatomyAtlas': return 'Human Anatomy Atlas & Quiz';
-      case 'PharmacyExam': return 'Pharmacy Exam Preparation';
-      case 'NursingExam': return 'Nursing Exam Kit (NCLEX/Prometric)';
-      case 'HajjMedicalPrep': return 'Hajj Medical Mission Prep';
-      case 'IslamicHub': return 'Hikmah Islamic Knowledge Hub';
-      case 'ManzilBook': return 'Manzil HD Protection Book';
-      case 'HisnulMuslim': return 'Hisnul Muslim (Fortress of the Muslim)';
-      case 'QuranMajeed': return 'Quran Majeed Reader';
-      case 'About': return 'About Hikmah Omni Suite';
-      case 'Settings': return 'Preferences & Settings';
-      default: return 'Hikmah Omni Suite';
-    }
-  };
+  useEffect(() => {
+    const closeMenus = (e: MouseEvent) => {
+      if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) setShowThemeMenu(false);
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) setShowMoreMenu(false);
+    };
+    document.addEventListener('mousedown', closeMenus);
+    return () => document.removeEventListener('mousedown', closeMenus);
+  }, []);
+
+  const meta = getScreenMeta(currentScreen);
+  const isDashboard = currentScreen === 'Dashboard';
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-xs no-print transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-3">
-          
-          <div className="flex items-center gap-3 min-w-0">
-            {canGoBack && currentScreen !== 'Dashboard' ? (
+    <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 no-print">
+      <div className="px-3 sm:px-4 h-14 flex items-center justify-between gap-2">
+        {/* Left: Brand Wordmark on Dashboard OR Back + Title on sub-screens */}
+        {isDashboard ? (
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xl sm:text-2xl font-black tracking-tight bg-linear-to-r from-emerald-600 via-teal-500 to-cyan-600 bg-clip-text text-transparent">
+                Hikmah
+              </span>
+              <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[11px] font-medium">
+                Omni Suite
+              </span>
+            </div>
+            <div className="text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
+              Comprehensive Professional Platform
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 min-w-0">
+            {canGoBack && (
               <button
                 onClick={onBack}
-                className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1 font-medium text-sm"
-                title="Back to previous screen"
+                className="p-2 rounded-xl text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-11 min-w-11 flex items-center justify-center"
+                title="Back"
               >
-                <ArrowLeft className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden sm:inline">Back</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => onNavigate('Dashboard')}
-                className="flex items-center gap-2.5 text-left group"
-              >
-                <div className="w-10 h-10 rounded-xl overflow-hidden border border-emerald-500/30 shadow-xs shrink-0 bg-emerald-50">
-                  <img
-                    src="/assets/img_brand_logo.jpg"
-                    alt="Logo"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                </div>
-                <div className="hidden xs:block truncate">
-                  <div className="font-bold text-slate-900 dark:text-white leading-tight flex items-center gap-1.5 text-base">
-                    <span>Hikmah Omni Suite</span>
-                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-semibold">Buner</span>
-                  </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                    {profile.name} • {profile.city}
-                  </div>
-                </div>
+                <ArrowLeft className="w-5 h-5" />
               </button>
             )}
-
-            {currentScreen !== 'Dashboard' && (
-              <div className="truncate pl-1 border-l border-slate-200 dark:border-slate-700">
-                <h1 className="font-semibold text-slate-800 dark:text-slate-100 text-sm sm:text-base truncate">
-                  {getScreenTitle(currentScreen)}
-                </h1>
-              </div>
-            )}
+            <h1 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base truncate">
+              {meta.title}
+            </h1>
           </div>
+        )}
 
-          {currentScreen === 'Dashboard' && (
-            <div className="flex-1 max-w-md hidden md:block mx-4">
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search 40+ clinical, financial & productivity tools..."
-                  value={searchQuery}
-                  onChange={(e) => onSearchChange(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border-0 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 dark:text-slate-100 placeholder-slate-400 transition-all outline-hidden"
-                />
-              </div>
-            </div>
+        {/* Right TopAppBar Actions matching DashboardScreen.kt */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          {!isDashboard && (
+            <button
+              onClick={() => onNavigate('Dashboard')}
+              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-11 min-w-11 flex items-center justify-center"
+              title="Home Dashboard"
+            >
+              <Home className="w-5 h-5" />
+            </button>
           )}
 
-          <div className="flex items-center gap-2 shrink-0">
-            <div
-              onClick={() => onNavigate('IslamicHub')}
-              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-medium cursor-pointer hover:bg-emerald-100 transition-colors"
-              title="Islamic Hijri Date & Events"
-            >
-              <BookOpen className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>{hijri.formatted}</span>
-            </div>
+          {/* Mobile Frame / Wide Layout Toggle */}
+          <button
+            onClick={onToggleViewportMode}
+            className="hidden md:flex p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-11 items-center gap-1 text-xs font-semibold"
+            title={viewportMode === 'mobile' ? 'Expand to Wide View' : 'Switch to Phone Frame View'}
+          >
+            {viewportMode === 'mobile' ? <Maximize2 className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
+          </button>
 
-            {currentScreen !== 'Dashboard' && (
-              <button
-                onClick={() => onNavigate('Dashboard')}
-                className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                title="Go to Home Dashboard"
-              >
-                <Home className="w-5 h-5" />
-              </button>
+          {/* View All Services Drawer */}
+          <button
+            onClick={onOpenAllServices}
+            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-11 min-w-11 flex items-center justify-center"
+            title="View All Services"
+          >
+            <LayoutGrid className="w-5 h-5" />
+          </button>
+
+          {/* Islamic Library Shortcut */}
+          <button
+            onClick={() => onNavigate('IslamicHub')}
+            className="p-2 rounded-xl text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition min-h-11 min-w-11 flex items-center justify-center"
+            title="Islamic Library"
+          >
+            <BookOpen className="w-5 h-5" />
+          </button>
+
+          {/* 3-State Theme Menu (Light / Dark / System Default) */}
+          <div className="relative" ref={themeMenuRef}>
+            <button
+              onClick={() => setShowThemeMenu(!showThemeMenu)}
+              className="p-2 rounded-xl text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-11 min-w-11 flex items-center justify-center"
+              title="Change Theme"
+            >
+              {themePreference === 'dark' ? (
+                <Moon className="w-5 h-5 text-amber-300" />
+              ) : themePreference === 'light' ? (
+                <Sun className="w-5 h-5 text-amber-500" />
+              ) : (
+                <Monitor className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              )}
+            </button>
+            {showThemeMenu && (
+              <div className="absolute right-0 mt-1.5 w-48 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl py-1.5 z-50">
+                {(
+                  [
+                    { key: 'light', label: 'Light Mode', icon: Sun },
+                    { key: 'dark', label: 'Dark Mode', icon: Moon },
+                    { key: 'system', label: 'System Default', icon: Monitor },
+                  ] as const
+                ).map((opt) => {
+                  const OptIcon = opt.icon;
+                  return (
+                    <button
+                      key={opt.key}
+                      onClick={() => {
+                        onChangeTheme(opt.key);
+                        setShowThemeMenu(false);
+                      }}
+                      className="w-full px-3.5 py-2.5 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-between"
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <OptIcon className="w-4 h-4" />
+                        {opt.label}
+                      </span>
+                      {themePreference === opt.key && <Check className="w-4 h-4 text-emerald-600" />}
+                    </button>
+                  );
+                })}
+              </div>
             )}
-
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title="Toggle Dark / Light Theme"
-            >
-              {profile.darkTheme ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-slate-600" />}
-            </button>
-
-            <button
-              onClick={() => onNavigate('Settings')}
-              className={`p-2 rounded-xl transition-colors ${currentScreen === 'Settings' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-              title="App Settings & Profile"
-            >
-              <SettingsIcon className="w-5 h-5" />
-            </button>
           </div>
 
+          {/* More Options Menu */}
+          <div className="relative" ref={moreMenuRef}>
+            <button
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              className="p-2 rounded-xl text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition min-h-11 min-w-11 flex items-center justify-center"
+              title="More Options"
+            >
+              <MoreVertical className="w-5 h-5" />
+            </button>
+            {showMoreMenu && (
+              <div className="absolute right-0 mt-1.5 w-52 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl py-1.5 z-50">
+                <button
+                  onClick={() => { setShowMoreMenu(false); onNavigate('Settings'); }}
+                  className="w-full px-3.5 py-2.5 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2.5"
+                >
+                  <SettingsIcon className="w-4 h-4 text-emerald-600" />
+                  Settings & Profile
+                </button>
+                <button
+                  onClick={() => { setShowMoreMenu(false); onNavigate('StudyTimer'); }}
+                  className="w-full px-3.5 py-2.5 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2.5"
+                >
+                  <Timer className="w-4 h-4 text-orange-500" />
+                  Focus Study Timer
+                </button>
+                <button
+                  onClick={() => { setShowMoreMenu(false); onNavigate('About'); }}
+                  className="w-full px-3.5 py-2.5 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2.5"
+                >
+                  <Info className="w-4 h-4 text-slate-500" />
+                  About Hikmah Omni Suite
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
     </header>
   );
 };

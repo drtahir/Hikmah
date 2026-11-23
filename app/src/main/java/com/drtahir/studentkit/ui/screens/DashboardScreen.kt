@@ -72,7 +72,9 @@ val allToolsList = listOf(
     UtilityTool("img2xls", "Image to Excel", "Convert tables to spreadsheet via OCR", "Documents", Icons.Default.TableChart, Color(0xFF2E7D32), "OCR AI", Screen.ImageToXls),
     UtilityTool("img2word", "Image to Word", "Convert images to DOCX files via OCR", "Documents", Icons.Default.Description, Color(0xFF1565C0), "DOCX CONV", Screen.ImageToWord),
     UtilityTool("scanner", "Edge Scanner", "Scan physical doc pages via camera", "Documents", Icons.Default.DocumentScanner, Color(0xFF673AB7), "HD SCAN", Screen.DocumentScanner),
-    UtilityTool("pdftools", "PDF Handlers Suite", "13-in-1: Merge, split, numbers, grayscale, booklet, crop", "Documents", Icons.Default.PictureAsPdf, Color(0xFFEF6C00), "13-IN-1", Screen.PdfTools),
+    UtilityTool("pdftools", "PDF Handlers Suite", "14-in-1: Word (.docx), compress, merge, split, grayscale, lock", "Documents", Icons.Default.PictureAsPdf, Color(0xFFEF6C00), "14-IN-1", Screen.PdfTools),
+    UtilityTool("pdf2word", "PDF to Word", "Convert any digital or scanned PDF into editable .docx", "Documents", Icons.Default.Description, Color(0xFF1E88E5), "PDF→DOCX", Screen.PdfToWord),
+    UtilityTool("pdf_sign_redact", "PDF Sign & Word→PDF", "Sign PDFs, blackout redact & convert Word/TXT to PDF", "Documents", Icons.Default.Draw, Color(0xFF0D47A1), "SIGN/REDACT", Screen.PdfSignRedact),
     UtilityTool("invoice", "Invoice Maker", "Create professional PDF invoices", "Documents", Icons.Default.Receipt, Color(0xFF00838F), "INVOICES", Screen.InvoiceGenerator),
     UtilityTool("hospital_clerk", "Hospital Clerk & MS Kit", "Official orders, rosters, show causes & letters", "Documents", Icons.Default.LocalHospital, Color(0xFF00796B), "GOVT KP", Screen.HospitalClerkAdmin),
     UtilityTool("duty_rota", "Duty Rota Creator", "Create official Word (.docx) & PDF rosters with header, logo & stamp", "Documents", Icons.Default.TableChart, Color(0xFF0D47A1), "WORD DOCX", Screen.DutyRotaCreator),
@@ -86,6 +88,7 @@ val allToolsList = listOf(
     UtilityTool("qr_scan", "QR Scanner", "Scan bar codes & check web links", "Utilities", Icons.Default.QrCodeScanner, Color(0xFF00897B), "CAMERA", Screen.QrScanner),
     UtilityTool("passwords", "Password Vault", "Local encrypted credentials keeper", "Utilities", Icons.Default.Lock, Color(0xFF2E7D32), "CRYPT", Screen.PasswordManager),
     UtilityTool("img_tools", "Image Compress", "Compress, resize & optimize images", "Utilities", Icons.Default.AddPhotoAlternate, Color(0xFFC2185B), "BATCH", Screen.ImageTools),
+    UtilityTool("video_audio", "Video & Audio Studio", "Hardware compress video, trim clips & extract M4A audio", "Utilities", Icons.Default.VideoLibrary, Color(0xFFD81B60), "MEDIA MP4", Screen.VideoAudioStudio),
     UtilityTool("age", "Age Calculator", "Exact age in years, months & days", "Utilities", Icons.Default.Cake, Color(0xFFE91E63), "AGE FINDER", Screen.AgeCalculator),
     UtilityTool("intruder_guard", "Intruder Guard", "Silent background selfie & siren alarm", "Utilities", Icons.Default.Security, Color(0xFFD32F2F), "SECURITY", Screen.IntruderGuard),
     UtilityTool("file_encryptor", "File Encryptor", "Hardware AES-256 GCM locker", "Utilities", Icons.Default.EnhancedEncryption, Color(0xFF1E88E5), "KEYSTORE", Screen.FileEncryptor),
@@ -103,12 +106,14 @@ val allToolsList = listOf(
     UtilityTool("timetable", "Lesson Calendar", "Track school subjects & timetables", "Study", Icons.Default.Schedule, Color(0xFF1976D2), "AGENDA", Screen.Timetable),
     UtilityTool("bmi", "BMI & Health", "Water logging & fitness calculator", "Study", Icons.Default.FitnessCenter, Color(0xFF43A047), "WELLNESS", Screen.BmiCalculator),
     UtilityTool("gpa", "GPA Calculator", "Calculate Semester GPA & CGPA instantly", "Study", Icons.Default.School, Color(0xFF9C27B0), "GPA CALC", Screen.GpaCalculator),
+    UtilityTool("islamic_daily", "Qibla, Salah & Tasbih", "Sensor Qibla compass, city/GPS prayer times & haptic tasbih", "Study", Icons.Default.Explore, Color(0xFF0F5132), "ISLAMIC PRO", Screen.IslamicDaily),
     UtilityTool("islamic", "Islamic Library", "Read Manzil Arabic & other books in HD", "Study", Icons.Default.Book, Color(0xFF198754), "MANZIL HD", Screen.IslamicHub),
 
     // 🩺 Medical / Clinical
     UtilityTool("iv_calc", "IV Infusion Rate", "IV fluid flow & drop rates tracker", "Medical", Icons.Default.WaterDrop, Color(0xFF0288D1), "NURSING", Screen.IvCalculator),
     UtilityTool("dose_calc", "Drug Dosage Calc", "Standard patient body-weight dosages", "Medical", Icons.Default.MedicalServices, Color(0xFF00C853), "PHARMACY", Screen.DosageCalculator),
     UtilityTool("gfr_calc", "GFR Renal Solver", "Cockcroft-Gault kidney clearance", "Medical", Icons.Default.Science, Color(0xFFFF9100), "CLINICAL", Screen.GfrCalculator),
+    UtilityTool("clinical_scores", "Clinical & ABG Scores", "ABG, Anion Gap, GCS, NEWS2, qSOFA & APGAR", "Medical", Icons.Default.MonitorHeart, Color(0xFFDC2626), "ER SCORES", Screen.ClinicalScores),
     UtilityTool("anatomy", "Anatomy Atlas", "Human systems, colorful study charts & quiz", "Medical", Icons.Default.AccessibilityNew, Color(0xFFE53935), "STUDY ATLAS", Screen.AnatomyAtlas),
     UtilityTool("pharmacy_exam", "Pharmacy Exam", "Pakistan Category B pharmacy assistant prep", "Medical", Icons.Default.Quiz, Color(0xFF9C27B0), "EXAM PREP", Screen.PharmacyExam),
     UtilityTool("nursing_exam", "Nursing Exam Kit", "DHA, Saudi Prometric, NCLEX-RN, HAAD, MOH prep", "Medical", Icons.Default.MedicalServices, Color(0xFF00695C), "12000+ Qs & BOOK", Screen.NursingExam),
@@ -598,7 +603,7 @@ fun PdfHandlersHeroButton(
                             horizontalArrangement = Arrangement.Start
                         ) {
                             Text(
-                                text = "13-in-1 Master PDF Suite",
+                                text = "14-in-1 Master PDF Suite",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
@@ -624,7 +629,7 @@ fun PdfHandlersHeroButton(
                         }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Merge, Split, Number Pages, Grayscale, Dark Mode & Encrypt",
+                            text = "PDF to Word (.docx), Compress, Merge, Split, Grayscale & Encrypt",
                             fontSize = 11.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -968,8 +973,10 @@ fun DashboardScreen(
     var showMoreMenu by remember { mutableStateOf(false) }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
+                windowInsets = WindowInsets(0.dp),
                 title = {
                     Column(
                         verticalArrangement = Arrangement.Center,

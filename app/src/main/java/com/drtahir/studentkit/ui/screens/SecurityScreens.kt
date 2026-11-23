@@ -738,7 +738,6 @@ fun IntruderGuardScreen(viewModel: StudentKitViewModel) {
                     colors = listOf(Color(0xFF0F172A), Color(0xFF020617))
                 )
             )
-            .navigationBarsPadding()
     ) {
         Column(
             modifier = Modifier

@@ -1,345 +1,509 @@
 import React, { useState } from 'react';
-import { ScreenType, Expense, Income, Bill, Loan } from '../types';
+import { ScreenType, Expense, Income, Bill, Loan, SavingsGoal, UserProfile, TimetableEntry } from '../types';
+import { getHijriDate } from '../data/islamicData';
+import { ALL_SUITE_MODULES } from '../data/navigationCatalog';
+import { ModuleIcon } from '../components/ModuleIcon';
+import { StorageService } from '../services/storage';
 import {
-  TrendingDown,
-  TrendingUp,
-  Receipt,
-  Landmark,
-  Users,
-  ArrowRightLeft,
-  Target,
-  FileText,
-  CreditCard,
-  Camera,
-  PenTool,
-  Printer,
-  Table,
-  Building2,
-  Stethoscope,
-  FileCheck,
-  Calculator,
-  Shuffle,
-  QrCode,
-  Barcode,
-  Clock,
-  KeyRound,
-  Binary,
-  Video,
-  BookMarked,
-  Timer,
-  Calendar,
-  Activity,
-  GraduationCap,
-  Droplet,
-  Microscope,
-  HeartPulse,
-  Award,
-  Compass,
-  BookOpen,
-  Scroll,
-  Sparkles,
-  Search,
-  Pill
+  Sun, Sunrise, Sunset, Moon, Briefcase, Edit3, Calendar, Star,
+  TrendingDown, TrendingUp, Flag, BookOpen, QrCode, FileText, Store,
+  ChevronRight, Search, X, Clock, Receipt, CheckCircle2
 } from 'lucide-react';
 
 interface DashboardViewProps {
   onNavigate: (screen: ScreenType) => void;
+  profile: UserProfile;
+  onUpdateHijriOffset: (offset: number) => void;
   expenses: Expense[];
   income: Income[];
   bills: Bill[];
   loans: Loan[];
-  searchQuery: string;
-}
-
-interface ToolCardItem {
-  id: string;
-  title: string;
-  description: string;
-  category: 'Finance' | 'Documents' | 'Medical' | 'Islamic' | 'Utilities' | 'Study';
-  screen: ScreenType;
-  icon: React.ElementType;
-  color: string;
-  badge?: string;
+  savings: SavingsGoal[];
+  viewportMode: 'mobile' | 'wide';
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigate,
+  profile,
+  onUpdateHijriOffset,
   expenses,
   income,
   bills,
-  loans,
-  searchQuery
+  savings,
+  viewportMode,
 }) => {
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [showHijriDialog, setShowHijriDialog] = useState(false);
 
-  const totalExpense = expenses.reduce((sum, item) => sum + item.amount, 0);
-  const totalIncome = income.reduce((sum, item) => sum + item.amount, 0);
-  const unpaidBillsCount = bills.filter((b) => !b.isPaid).length;
-  const netSavings = totalIncome - totalExpense;
+  const now = new Date();
+  const hour = now.getHours();
 
-  const tools: ToolCardItem[] = [
-    // 🕌 Finance
-    { id: 'expense', title: 'Expense Tracker', description: 'Log & categorize daily cash outflows with receipt notes', category: 'Finance', screen: 'ExpenseTracker', icon: TrendingDown, color: 'from-rose-500 to-red-600', badge: 'SQLITE' },
-    { id: 'income', title: 'Income Tracker', description: 'Monitor salary, clinic earnings & freelancing streams', category: 'Finance', screen: 'IncomeTracker', icon: TrendingUp, color: 'from-emerald-500 to-green-600', badge: 'REVENUE' },
-    { id: 'bills', title: 'Utility Bills', description: 'Reminders & logs for WAPDA, Sui Gas, Internet & Water', category: 'Finance', screen: 'UtilityBills', icon: Receipt, color: 'from-blue-500 to-indigo-600', badge: `${unpaidBillsCount} DUE` },
-    { id: 'zakat', title: 'Zakat Calculator', description: 'Accurate wealth Zakat calculation for Gold, Silver & Cash', category: 'Finance', screen: 'ZakatCalculator', icon: Landmark, color: 'from-teal-500 to-emerald-600', badge: '2.5% NISAB' },
-    { id: 'committee', title: 'BC Kommittees', description: 'Monthly lucky draw simulator & Kameti member payout tracker', category: 'Finance', screen: 'BcCommittee', icon: Users, color: 'from-purple-500 to-violet-600', badge: 'DRAWS' },
-    { id: 'loans', title: 'Loan Ledger', description: 'Track borrowed funds and loans lent with due dates', category: 'Finance', screen: 'LoanTracker', icon: ArrowRightLeft, color: 'from-amber-500 to-orange-600', badge: 'LEDGER' },
-    { id: 'savings', title: 'Savings Goals', description: 'Target funds, deposits tracking & visual progress bars', category: 'Finance', screen: 'SavingsGoals', icon: Target, color: 'from-cyan-500 to-blue-600', badge: 'GOALS' },
-    { id: 'fin_backup', title: 'Finance Report & Backup', description: 'Export complete accounts & balance statement in JSON', category: 'Finance', screen: 'FinanceReportAndBackup', icon: CreditCard, color: 'from-slate-600 to-slate-800', badge: 'BACKUP' },
+  const timeMeta =
+    hour < 12
+      ? { tag: 'GOOD MORNING', Icon: Sunrise, tint: 'text-amber-300', grad: 'from-[#065F46] via-[#047857] to-[#0F766E]' }
+      : hour < 17
+      ? { tag: 'GOOD AFTERNOON', Icon: Sun, tint: 'text-yellow-300', grad: 'from-[#0F5132] via-[#0D9488] to-[#0369A1]' }
+      : hour < 20
+      ? { tag: 'GOOD EVENING', Icon: Sunset, tint: 'text-orange-300', grad: 'from-[#1E3A8A] via-[#312E81] to-[#0F766E]' }
+      : { tag: 'PEACEFUL NIGHT', Icon: Moon, tint: 'text-amber-200', grad: 'from-[#0F172A] via-[#1E293B] to-[#064E3B]' };
 
-    // 📄 Documents & Hospital Administration
-    { id: 'cv_builder', title: 'CV Resume Builder', description: 'Create custom print-ready A4 PDF resumes with templates', category: 'Documents', screen: 'CvBuilder', icon: FileText, color: 'from-green-600 to-emerald-700', badge: 'A4 PRINT' },
-    { id: 'invoice_gen', title: 'Invoice Maker', description: 'Professional printable PDF invoices with taxes & terms', category: 'Documents', screen: 'InvoiceGenerator', icon: Printer, color: 'from-sky-600 to-blue-700', badge: 'PDF EXPORT' },
-    { id: 'duty_rota', title: 'Duty Rota Creator', description: 'Official hospital OPD & ER shift rosters with MS stamp', category: 'Documents', screen: 'DutyRotaCreator', icon: Table, color: 'from-indigo-600 to-blue-800', badge: 'WORD DOCX' },
-    { id: 'hospital_clerk', title: 'Hospital Clerk & MS Kit', description: 'Official office orders, show causes, transfers & letters', category: 'Documents', screen: 'HospitalClerkAdmin', icon: Building2, color: 'from-teal-600 to-teal-800', badge: 'GOVT KP' },
-    { id: 'id_scanner', title: 'ID Card & Doc Scanner', description: 'Dual-side composite layout combining front & back on A4', category: 'Documents', screen: 'IdCardScanner', icon: Camera, color: 'from-blue-600 to-cyan-700', badge: '2-IN-1' },
-    { id: 'assignment_ocr', title: 'Handwritten Assignment OCR', description: 'Convert typed or scanned text into ruled notebook paper', category: 'Documents', screen: 'AssignmentOcrStudio', icon: PenTool, color: 'from-purple-600 to-pink-700', badge: 'RULED PDF' },
-    { id: 'stamp_sign', title: 'Signature & Stamp Pad', description: 'Draw freehand digital signatures & export transparent PNG', category: 'Documents', screen: 'SignaturePad', icon: FileCheck, color: 'from-blue-500 to-indigo-700', badge: 'STAMP' },
+  const TimeIcon = timeMeta.Icon;
+  const formattedGregorian = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+  const hijri = getHijriDate(profile.hijriOffset);
 
-    // 🩺 Medical & Clinical Practice
-    { id: 'anatomy', title: 'Human Anatomy Atlas', description: '12 body systems, high-yield clinical pearls & anatomy quiz', category: 'Medical', screen: 'AnatomyAtlas', icon: Stethoscope, color: 'from-rose-600 to-red-700', badge: 'HD ATLAS' },
-    { id: 'nursing_exam', title: 'Nursing Exam Kit', description: 'NCLEX-RN, DHA, HAAD, Saudi Prometric & MOH prep bank', category: 'Medical', screen: 'NursingExam', icon: HeartPulse, color: 'from-emerald-600 to-teal-800', badge: 'EXAM PREP' },
-    { id: 'pharmacy_exam', title: 'Pharmacy Exam', description: 'Pakistan Category B Pharmacy Assistant & pharmacology test', category: 'Medical', screen: 'PharmacyExam', icon: Pill, color: 'from-purple-600 to-indigo-700', badge: 'POSOLOGY' },
-    { id: 'hajj_prep', title: 'Hajj Medical Mission', description: 'Saudi pilgrimage health guidelines & emergency mass triage', category: 'Medical', screen: 'HajjMedicalPrep', icon: Award, color: 'from-teal-600 to-emerald-700', badge: 'NTS EXAM' },
-    { id: 'iv_calc', title: 'IV Infusion Rate Calc', description: 'Calculate infusion drip rate (gtt/min) and pump flow (mL/hr)', category: 'Medical', screen: 'IvCalculator', icon: Droplet, color: 'from-cyan-600 to-blue-700', badge: 'CLINICAL' },
-    { id: 'dose_calc', title: 'Drug Dosage Calculator', description: 'Pediatric body-weight posology (mg/kg) & syrup volume', category: 'Medical', screen: 'DosageCalculator', icon: Microscope, color: 'from-green-600 to-emerald-700', badge: 'DOSING' },
-    { id: 'gfr_calc', title: 'GFR Renal Solver', description: 'Cockcroft-Gault creatinine clearance formula & CKD stages', category: 'Medical', screen: 'GfrCalculator', icon: Activity, color: 'from-amber-600 to-orange-700', badge: 'RENAL' },
+  // Quick Stats matching DashboardScreen.kt
+  const todayIso = now.toISOString().slice(0, 10);
+  const todayExpense = expenses
+    .filter((e) => e.date === todayIso)
+    .reduce((sum, e) => sum + e.amount, 0);
+  const totalExpense = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalIncome = income.reduce((sum, i) => sum + i.amount, 0);
+  const netBalance = totalIncome - totalExpense;
+  const activeGoalsCount = savings.length;
 
-    // 📖 Islamic Knowledge Hub
-    { id: 'islamic_hub', title: 'Hikmah Islamic Hub', description: 'Spiritual sanctuary with Quran, Manzil, Hadith & calendar', category: 'Islamic', screen: 'IslamicHub', icon: Compass, color: 'from-emerald-600 to-green-700', badge: 'HIKMAH' },
-    { id: 'quran', title: 'Quran Majeed Reader', description: 'Read holy Surahs with Arabic calligraphy & translation', category: 'Islamic', screen: 'QuranMajeed', icon: BookOpen, color: 'from-teal-600 to-emerald-800', badge: '114 SURAHS' },
-    { id: 'manzil', title: 'Manzil HD Protection', description: 'Essential Quranic protection verses against harm and evil', category: 'Islamic', screen: 'ManzilBook', icon: Scroll, color: 'from-green-700 to-emerald-900', badge: 'MANZIL' },
-    { id: 'hisnul_muslim', title: 'Hisnul Muslim Fortress', description: 'Authentic morning, evening, travel & healing supplications', category: 'Islamic', screen: 'HisnulMuslim', icon: BookMarked, color: 'from-emerald-700 to-teal-900', badge: 'ADHKAR' },
-
-    // ⚙️ Utilities & Security
-    { id: 'calc', title: 'Scientific Calculator', description: 'Scientific math formula solver with trigonometric functions', category: 'Utilities', screen: 'Calculator', icon: Calculator, color: 'from-pink-600 to-rose-700', badge: 'SCIENTIFIC' },
-    { id: 'unit_conv', title: 'Unit Converter', description: 'Convert length, weight, data bytes, temperature & speeds', category: 'Utilities', screen: 'UnitConverter', icon: Shuffle, color: 'from-cyan-600 to-teal-700', badge: 'CONVERT' },
-    { id: 'qr_gen', title: 'QR Code Studio', description: 'Create colored custom QR codes for URLs, WiFi & contacts', category: 'Utilities', screen: 'QrGenerator', icon: QrCode, color: 'from-indigo-600 to-blue-700', badge: 'VECTOR' },
-    { id: 'barcode_gen', title: 'Barcode Generator', description: 'Generate Code-128 and retail EAN barcodes with instant download', category: 'Utilities', screen: 'BarcodeGenerator', icon: Barcode, color: 'from-blue-600 to-indigo-700', badge: 'CODE-128' },
-    { id: 'passwords', title: 'Password Vault', description: 'Secure local encrypted credentials keeper & generator', category: 'Utilities', screen: 'PasswordManager', icon: KeyRound, color: 'from-emerald-600 to-teal-700', badge: 'ENCRYPTED' },
-    { id: 'age_calc', title: 'Age Calculator', description: 'Exact age in years, months, days & next birthday countdown', category: 'Utilities', screen: 'AgeCalculator', icon: Clock, color: 'from-violet-600 to-purple-700', badge: 'AGE' },
-    { id: 'steganography', title: 'Steganography Studio', description: 'Hide secret messages inside image pixels via LSB algorithm', category: 'Utilities', screen: 'Steganography', icon: Binary, color: 'from-slate-700 to-slate-900', badge: 'LSB CIPHER' },
-    { id: 'teleprompter', title: 'Teleprompter Pro', description: 'Camera presentation prompter with mirror mode & speed control', category: 'Utilities', screen: 'Teleprompter', icon: Video, color: 'from-indigo-600 to-violet-700', badge: 'STUDIO' },
-
-    // 🎓 Study & Health
-    { id: 'notes', title: 'Clinical & Study Notes', description: 'Organize ward rounds, clinical checklists & study memos', category: 'Study', screen: 'Notes', icon: BookMarked, color: 'from-amber-600 to-yellow-600', badge: 'PINNED' },
-    { id: 'study_timer', title: 'Pomodoro Focus Timer', description: 'Timed focus sessions & study intervals with audio alert', category: 'Study', screen: 'StudyTimer', icon: Timer, color: 'from-rose-600 to-orange-600', badge: '25/5 MIN' },
-    { id: 'timetable', title: 'Weekly Duty & Timetable', description: 'Track clinic shifts, lectures & weekly scheduled routines', category: 'Study', screen: 'Timetable', icon: Calendar, color: 'from-blue-600 to-cyan-600', badge: 'AGENDA' },
-    { id: 'bmi_calc', title: 'BMI & Water Tracker', description: 'Body mass index, healthy weight range & daily hydration', category: 'Study', screen: 'BmiCalculator', icon: Activity, color: 'from-emerald-600 to-green-700', badge: 'WELLNESS' },
-    { id: 'gpa_calc', title: 'GPA & CGPA Calculator', description: 'Calculate semester grade points & academic honors', category: 'Study', screen: 'GpaCalculator', icon: GraduationCap, color: 'from-purple-600 to-indigo-700', badge: '4.0 SCALE' }
+  // Smart Utilities Portal tools (All, Finance, Documents, Utilities, Study, Medical)
+  const portalTools = ALL_SUITE_MODULES.filter((m) => m.category !== 'Security');
+  const categories = [
+    { key: 'All', label: 'All' },
+    { key: 'Finance', label: 'Finance' },
+    { key: 'Documents', label: 'Docs' },
+    { key: 'Utilities', label: 'Tools' },
+    { key: 'Study', label: 'Study' },
+    { key: 'Medical', label: 'Medical' },
   ];
 
-  const filteredTools = tools.filter((tool) => {
-    const matchesCategory = selectedCategory === 'All' || tool.category === selectedCategory;
-    const query = searchQuery.trim().toLowerCase();
-    const matchesSearch =
-      query === '' ||
-      tool.title.toLowerCase().includes(query) ||
-      tool.description.toLowerCase().includes(query) ||
-      tool.category.toLowerCase().includes(query) ||
-      (tool.badge && tool.badge.toLowerCase().includes(query));
-    return matchesCategory && matchesSearch;
+  const filteredTools = portalTools.filter((tool) => {
+    const matchesCat = selectedCategory === 'All' || tool.category === selectedCategory;
+    const q = searchQuery.trim().toLowerCase();
+    const matchesQuery =
+      q === '' ||
+      tool.title.toLowerCase().includes(q) ||
+      tool.description.toLowerCase().includes(q) ||
+      tool.badge.toLowerCase().includes(q);
+    return matchesCat && matchesQuery;
   });
 
-  const categories = ['All', 'Finance', 'Documents', 'Medical', 'Islamic', 'Utilities', 'Study'];
+  // Timetable & Upcoming Bills
+  const timetable: TimetableEntry[] = StorageService.getTimetable();
+  const jsDay = now.getDay(); // 0=Sun,1=Mon...
+  const adjustedDayNum = jsDay === 0 ? 7 : jsDay;
+  const todaysClasses = timetable.filter((t) => (t.dayOfWeek || 1) === adjustedDayNum);
+  const upcomingBills = bills.filter((b) => !b.isPaid).slice(0, 3);
+
+  const gridColsClass =
+    viewportMode === 'mobile'
+      ? 'grid-cols-2'
+      : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4';
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="relative overflow-hidden rounded-3xl bg-linear-to-r from-emerald-800 via-teal-800 to-slate-900 text-white shadow-xl p-6 sm:p-8">
-        <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-20 pointer-events-none overflow-hidden">
-          <img
-            src="/assets/img_brand_logo.jpg"
-            alt="Hero pattern"
-            className="w-full h-full object-cover scale-125"
-            onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-          />
-        </div>
+    <div className="space-y-5 pb-6">
+      {/* 1. Glassmorphic Welcome Card (DashboardScreen.kt lines 1205-1446) */}
+      <section
+        className={`relative overflow-hidden rounded-3xl bg-linear-to-br ${timeMeta.grad} text-white p-4 border border-white/20 shadow-lg`}
+      >
+        <div className="space-y-3 relative z-10">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white/40 shadow-md shrink-0 bg-emerald-950">
+                <img
+                  src="/assets/img_brand_logo.jpg"
+                  alt="Hikmah Brand Emblem"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase text-white/95 mb-0.5">
+                  <TimeIcon className={`w-3.5 h-3.5 ${timeMeta.tint}`} />
+                  <span>{timeMeta.tag}</span>
+                </div>
+                <h2 className="text-lg font-extrabold leading-tight truncate">
+                  {profile.name?.trim() || 'Welcome'}
+                </h2>
+                {profile.occupation && (
+                  <div className="flex items-center gap-1 text-xs text-white/85 mt-0.5 truncate">
+                    <Briefcase className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{profile.occupation}</span>
+                  </div>
+                )}
+              </div>
+            </div>
 
-        <div className="relative z-10 max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs font-medium mb-3 backdrop-blur-xs">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
-            <span>Govt Category-D Hospital Pacha Kalay Buner</span>
-          </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-2">
-            Welcome to Hikmah Omni Suite
-          </h2>
-          <p className="text-emerald-100/90 text-sm sm:text-base leading-relaxed">
-            All-in-one professional productivity ecosystem integrating Islamic knowledge, hospital clinical tools, financial ledgers, document publishing & utility security suites.
-          </p>
-
-          <div className="mt-5 flex flex-wrap gap-2.5">
             <button
-              onClick={() => onNavigate('IslamicHub')}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs sm:text-sm font-semibold transition-all shadow-md active:scale-95"
+              onClick={() => onNavigate('Settings')}
+              className="p-2.5 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/30 transition shrink-0"
+              title="Edit Profile & Settings"
             >
-              <Compass className="w-4 h-4" />
-              <span>Islamic Hub</span>
-            </button>
-            <button
-              onClick={() => onNavigate('HospitalClerkAdmin')}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs sm:text-sm font-medium backdrop-blur-xs transition-all active:scale-95"
-            >
-              <Building2 className="w-4 h-4" />
-              <span>Hospital MS Kit</span>
-            </button>
-            <button
-              onClick={() => onNavigate('AnatomyAtlas')}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs sm:text-sm font-medium backdrop-blur-xs transition-all active:scale-95"
-            >
-              <Stethoscope className="w-4 h-4" />
-              <span>Anatomy Atlas</span>
+              <Edit3 className="w-4 h-4 text-white" />
             </button>
           </div>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div
-          onClick={() => onNavigate('IncomeTracker')}
-          className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs cursor-pointer hover:border-emerald-500 dark:hover:border-emerald-500 transition-all group"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Income</span>
-            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
-              <TrendingUp className="w-4 h-4" />
+          {/* Unified Gregorian + Hijri Date Strip */}
+          <div className="rounded-xl bg-white/15 border border-white/20 px-3 py-2 space-y-1.5">
+            <div className="flex items-center gap-2 text-[11px] font-medium text-white">
+              <Calendar className="w-3.5 h-3.5 text-white/85 shrink-0" />
+              <span className="truncate">{formattedGregorian}</span>
             </div>
-          </div>
-          <div className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white mt-2">
-            Rs. {totalIncome.toLocaleString()}
-          </div>
-          <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-1">
-            {income.length} credit entries
+            <div className="h-px bg-white/15" />
+            <button
+              onClick={() => setShowHijriDialog(true)}
+              className="w-full flex items-center justify-between gap-2 text-left hover:opacity-90 transition"
+            >
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-200 truncate">
+                <Star className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span className="truncate">{hijri.formatted}</span>
+              </span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white/15 text-white shrink-0">
+                Adjust
+              </span>
+            </button>
           </div>
         </div>
+      </section>
 
+      {/* Hijri Adjustment Modal */}
+      {showHijriDialog && (
         <div
-          onClick={() => onNavigate('ExpenseTracker')}
-          className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs cursor-pointer hover:border-rose-500 dark:hover:border-rose-500 transition-all group"
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setShowHijriDialog(false)}
         >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Outflow</span>
-            <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400">
-              <TrendingDown className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white mt-2">
-            Rs. {totalExpense.toLocaleString()}
-          </div>
-          <div className="text-[11px] text-rose-600 dark:text-rose-400 font-medium mt-1">
-            {expenses.length} expense logs
-          </div>
-        </div>
-
-        <div
-          onClick={() => onNavigate('UtilityBills')}
-          className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs cursor-pointer hover:border-blue-500 dark:hover:border-blue-500 transition-all group"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Pending Bills</span>
-            <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
-              <Receipt className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white mt-2">
-            {unpaidBillsCount} Unpaid
-          </div>
-          <div className="text-[11px] text-blue-600 dark:text-blue-400 font-medium mt-1">
-            WAPDA, Gas & PTCL
-          </div>
-        </div>
-
-        <div
-          onClick={() => onNavigate('SavingsGoals')}
-          className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs cursor-pointer hover:border-teal-500 dark:hover:border-teal-500 transition-all group"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Net Surplus</span>
-            <div className="p-2 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400">
-              <Target className="w-4 h-4" />
-            </div>
-          </div>
-          <div className={`text-lg sm:text-xl font-bold mt-2 ${netSavings >= 0 ? 'text-teal-600 dark:text-teal-400' : 'text-rose-600 dark:text-rose-400'}`}>
-            Rs. {netSavings.toLocaleString()}
-          </div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1">
-            Active balance reserve
-          </div>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-        {categories.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setSelectedCategory(cat)}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-              selectedCategory === cat
-                ? 'bg-slate-900 dark:bg-emerald-600 text-white shadow-xs'
-                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-            }`}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-2xl"
           >
-            {cat} {cat === 'All' ? `(${tools.length})` : ''}
-          </button>
-        ))}
-      </div>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base">Hijri Calendar Moon Offset</h3>
+              <button onClick={() => setShowHijriDialog(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              Current Hijri Date: <strong className="text-emerald-600 dark:text-emerald-400">{hijri.formatted}</strong>
+            </p>
+            <div className="grid grid-cols-5 gap-1.5">
+              {[-2, -1, 0, 1, 2].map((off) => (
+                <button
+                  key={off}
+                  onClick={() => {
+                    onUpdateHijriOffset(off);
+                    setShowHijriDialog(false);
+                  }}
+                  className={`py-2.5 rounded-xl text-xs font-bold transition ${
+                    profile.hijriOffset === off
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  {off > 0 ? `+${off}d` : off < 0 ? `${off}d` : 'Sync'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
-            <span>Productivity & Clinical Modules</span>
-            <span className="text-xs text-slate-500 font-normal">
-              Showing {filteredTools.length} {filteredTools.length === 1 ? 'tool' : 'tools'}
-            </span>
+      {/* 2. Quick Stats Row (DashboardScreen.kt lines 1456-1486) */}
+      <section className="grid grid-cols-3 gap-2.5">
+        <button
+          onClick={() => onNavigate('ExpenseTracker')}
+          className="text-left bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs hover:border-rose-400 transition"
+        >
+          <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            <span className="truncate">Today's Cost</span>
+            <TrendingDown className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+          </div>
+          <div className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white mt-1.5 tabular-nums truncate">
+            Rs. {todayExpense.toLocaleString()}
+          </div>
+        </button>
+
+        <button
+          onClick={() => onNavigate('FinanceReportAndBackup')}
+          className="text-left bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs hover:border-emerald-400 transition"
+        >
+          <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            <span className="truncate">Month Savings</span>
+            <TrendingUp className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          </div>
+          <div className={`text-sm sm:text-base font-extrabold mt-1.5 tabular-nums truncate ${netBalance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'}`}>
+            Rs. {netBalance.toLocaleString()}
+          </div>
+        </button>
+
+        <button
+          onClick={() => onNavigate('SavingsGoals')}
+          className="text-left bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs hover:border-indigo-400 transition"
+        >
+          <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            <span className="truncate">Active Goals</span>
+            <Flag className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+          </div>
+          <div className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white mt-1.5 tabular-nums">
+            {activeGoalsCount}
+          </div>
+        </button>
+      </section>
+
+      {/* 3. Stacked Hero CTA Banners (DashboardScreen.kt lines 1488-1506) */}
+      <section className={viewportMode === 'mobile' ? 'space-y-3' : 'grid grid-cols-1 md:grid-cols-2 gap-3'}>
+        {/* Islamic Library Hero */}
+        <button
+          onClick={() => onNavigate('IslamicHub')}
+          className="w-full text-left relative overflow-hidden rounded-2xl bg-linear-to-r from-[#0F5132] via-[#198754] to-[#0F5132] text-white p-3.5 border border-[#D4AF37]/80 shadow-md hover:brightness-105 transition group"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37] flex items-center justify-center shrink-0">
+                <BookOpen className="w-5 h-5 text-[#D4AF37]" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm truncate">Islamic Library & Books</span>
+                  <span className="px-1.5 py-0.5 rounded bg-[#D4AF37] text-[#0F5132] text-[9px] font-extrabold shrink-0">MANZIL HD</span>
+                </div>
+                <p className="text-[11px] text-white/85 truncate mt-0.5">Complete Protection Verses & Ruqyah</p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-[#D4AF37] shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </div>
+        </button>
+
+        {/* Smart QR & Barcode Studio Hero */}
+        <button
+          onClick={() => onNavigate('QrGenerator')}
+          className="w-full text-left relative overflow-hidden rounded-2xl bg-linear-to-r from-[#0D1B4C] via-[#1E2F79] to-[#0D1B4C] text-white p-3.5 border border-[#82B1FF]/80 shadow-md hover:brightness-105 transition group"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 rounded-full bg-[#82B1FF]/20 border border-[#82B1FF] flex items-center justify-center shrink-0">
+                <QrCode className="w-5 h-5 text-[#82B1FF]" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm truncate">Smart QR & Barcode Studio</span>
+                  <span className="px-1.5 py-0.5 rounded bg-[#448AFF] text-white text-[9px] font-extrabold shrink-0">HD VECTOR</span>
+                </div>
+                <p className="text-[11px] text-white/85 truncate mt-0.5">Custom Colors, WiFi Instant Connect & vCards</p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-[#82B1FF] shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </div>
+        </button>
+
+        {/* 14-in-1 Master PDF Suite Hero (Highlighting PDF to Word & Compress PDF) */}
+        <button
+          onClick={() => onNavigate('PdfTools')}
+          className="w-full text-left relative overflow-hidden rounded-2xl bg-linear-to-r from-[#5A0B0B] via-[#9E1B1B] to-[#5A0B0B] text-white p-3.5 border border-[#FF6B6B]/85 shadow-md hover:brightness-105 transition group"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 rounded-full bg-[#FF5252]/20 border border-[#FF5252] flex items-center justify-center shrink-0">
+                <FileText className="w-5 h-5 text-[#FF8A8A]" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm truncate">14-in-1 Master PDF Suite</span>
+                  <span className="px-1.5 py-0.5 rounded bg-[#FF5252] text-white text-[9px] font-extrabold shrink-0">100% OFFLINE</span>
+                </div>
+                <p className="text-[11px] text-white/85 truncate mt-0.5">PDF to Word (.docx), Compress, Merge, Split, Watermark & Encrypt</p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-[#FF8A8A] shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </div>
+        </button>
+
+        {/* OmniPOS Enterprise Suite Hero */}
+        <button
+          onClick={() => onNavigate('InvoiceGenerator')}
+          className="w-full text-left relative overflow-hidden rounded-2xl bg-linear-to-r from-[#1A237E] via-[#311B92] to-[#4A148C] text-white p-3.5 border border-[#FF9800]/85 shadow-md hover:brightness-105 transition group"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 rounded-full bg-[#FF9800]/20 border border-[#FF9800] flex items-center justify-center shrink-0">
+                <Store className="w-5 h-5 text-[#FFB74D]" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm truncate">OmniPOS Enterprise Suite</span>
+                  <span className="px-1.5 py-0.5 rounded bg-[#FF9800] text-slate-950 text-[9px] font-extrabold shrink-0">PRO INVOICE</span>
+                </div>
+                <p className="text-[11px] text-white/85 truncate mt-0.5">Create Branded Tax Invoices, Quotes & Thermal Receipts</p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-[#FFB74D] shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </div>
+        </button>
+      </section>
+
+      {/* 4. Smart Utilities Portal (DashboardScreen.kt lines 1509-1656) */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+            Smart Utilities Portal
           </h3>
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums">
+            {filteredTools.length} modules
+          </span>
         </div>
 
+        {/* Search Input */}
+        <div className="relative">
+          <Search className="w-4 h-4 text-emerald-600 dark:text-emerald-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search tools (e.g., Compress PDF, Zakat, CV, Security)..."
+            className="w-full pl-10 pr-10 py-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-emerald-500 outline-hidden"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Category Filter Chips */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1">
+          {categories.map((cat) => {
+            const selected = selectedCategory === cat.key;
+            return (
+              <button
+                key={cat.key}
+                onClick={() => setSelectedCategory(cat.key)}
+                className={`px-3.5 py-2 rounded-xl text-xs whitespace-nowrap transition shrink-0 ${
+                  selected
+                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                {cat.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 2-Column HDDesignToolButton Grid */}
         {filteredTools.length === 0 ? (
-          <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 p-8">
-            <Search className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-            <h4 className="font-semibold text-slate-800 dark:text-slate-200">No tools found</h4>
-            <p className="text-slate-500 text-sm mt-1">Try another search keyword or clear filters.</p>
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 text-center space-y-1">
+            <p className="font-bold text-slate-800 dark:text-white text-sm">No matching utilities found</p>
+            <p className="text-xs text-slate-500">Try typing PDF, Zakat, Kameti, Timer, or clear your filter.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
-            {filteredTools.map((tool) => {
-              const IconComponent = tool.icon;
-              return (
-                <div
-                  key={tool.id}
-                  onClick={() => onNavigate(tool.screen)}
-                  className="group relative bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-200 dark:border-slate-700/80 shadow-xs hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all cursor-pointer flex flex-col justify-between overflow-hidden"
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-2 mb-3">
-                      <div className={`p-2.5 rounded-xl text-white bg-linear-to-br ${tool.color} shadow-xs group-hover:scale-105 transition-transform`}>
-                        <IconComponent className="w-5 h-5" />
-                      </div>
-                      {tool.badge && (
-                        <span className="text-[10px] uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-                          {tool.badge}
-                        </span>
-                      )}
+          <div className={`grid ${gridColsClass} gap-2.5`}>
+            {filteredTools.map((tool) => (
+              <button
+                key={tool.id}
+                onClick={() => onNavigate(tool.screen)}
+                className="text-left bg-white dark:bg-slate-900 rounded-2xl p-3 border shadow-xs hover:shadow-md transition flex flex-col justify-between gap-2 group"
+                style={{ borderColor: `${tool.colorHex}33` }}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-1.5 mb-2">
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+                      style={{ backgroundColor: `${tool.colorHex}1F`, color: tool.colorHex }}
+                    >
+                      <ModuleIcon id={tool.id} className="w-4 h-4" />
                     </div>
-
-                    <h4 className="font-bold text-slate-900 dark:text-white text-sm group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                      {tool.title}
-                    </h4>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
-                      {tool.description}
-                    </p>
+                    <span
+                      className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md truncate"
+                      style={{ backgroundColor: `${tool.colorHex}1F`, color: tool.colorHex }}
+                    >
+                      {tool.badge}
+                    </span>
                   </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500">
-                    <span className="font-medium text-slate-500 dark:text-slate-400">{tool.category}</span>
-                    <span className="group-hover:translate-x-1 transition-transform font-medium text-emerald-600 dark:text-emerald-400">Open &rarr;</span>
+                  <div className="font-bold text-slate-900 dark:text-white text-[13px] leading-snug truncate">
+                    {tool.title}
                   </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2 leading-snug">
+                    {tool.description}
+                  </p>
                 </div>
-              );
-            })}
+              </button>
+            ))}
           </div>
         )}
-      </div>
+      </section>
+
+      {/* 5. Today's Classes Snippet (DashboardScreen.kt lines 1673-1755) */}
+      <section className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">Today's Classes & Rounds</h3>
+          <button onClick={() => onNavigate('Timetable')} className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+            View Timetable
+          </button>
+        </div>
+        {todaysClasses.length === 0 ? (
+          <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 text-xs text-slate-500">
+            No scheduled classes or rounds for today. Tap View Timetable to manage sessions.
+          </div>
+        ) : (
+          <div className="flex gap-2.5 overflow-x-auto scrollbar-none pb-1">
+            {todaysClasses.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => onNavigate('Timetable')}
+                className="min-w-52 text-left p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shrink-0 hover:border-emerald-500 transition"
+              >
+                <div className="font-bold text-sm text-slate-900 dark:text-white truncate">{item.subject}</div>
+                <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>{item.startTime} - {item.endTime}</span>
+                </div>
+                <div className="flex justify-between text-[11px] text-slate-500 mt-1.5">
+                  <span className="truncate">{item.teacher || 'Staff'}</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Room: {item.room || 'N/A'}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* 6. Upcoming Bills Snippet (DashboardScreen.kt lines 1758+) */}
+      <section className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">Upcoming Utility Bills</h3>
+          <button onClick={() => onNavigate('UtilityBills')} className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+            Manage Bills
+          </button>
+        </div>
+        {upcomingBills.length === 0 ? (
+          <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4" /> All utility bills are marked paid.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {upcomingBills.map((b) => (
+              <button
+                key={b.id}
+                onClick={() => onNavigate('UtilityBills')}
+                className="w-full text-left flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-400 transition"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Receipt className="w-4 h-4 text-blue-600 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-xs text-slate-900 dark:text-white truncate">{b.name}</div>
+                    <div className="text-[11px] text-slate-500">Due {b.dueDate}</div>
+                  </div>
+                </div>
+                <span className="font-bold text-xs text-rose-600 dark:text-rose-400 tabular-nums shrink-0">
+                  Rs. {b.amount.toLocaleString()}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 };

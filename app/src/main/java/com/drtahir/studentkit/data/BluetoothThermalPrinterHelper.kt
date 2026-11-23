@@ -275,7 +275,8 @@ object BluetoothThermalPrinterHelper {
         footerNote: String,
         logoBitmap: Bitmap? = null,
         showLogo: Boolean = true,
-        threshold: Int = 128
+        threshold: Int = 128,
+        autoOpenDrawer: Boolean = true
     ): ByteArray {
         val buffer = java.io.ByteArrayOutputStream()
 
@@ -347,8 +348,8 @@ object BluetoothThermalPrinterHelper {
         writeLine("*** Powered by OmniPOS ***")
         writeLine("\n\n")
 
-        // Cut paper & open cash drawer
-        write(ESC_OPEN_DRAWER)
+        // Cut paper & optionally open cash drawer
+        if (autoOpenDrawer) write(ESC_OPEN_DRAWER)
         write(ESC_FEED_AND_CUT)
 
         return buffer.toByteArray()
@@ -1351,6 +1352,276 @@ object BluetoothThermalPrinterHelper {
                 putExtra(Intent.EXTRA_TEXT, summaryText)
             }
             context.startActivity(Intent.createChooser(textIntent, "Share Bill"))
+        }
+    }
+
+    /**
+     * Pack C: Sends RJ11 ESC/POS pulse directly to kick open Bluetooth-linked cash drawer.
+     */
+    fun openCashDrawer(context: Context, deviceAddress: String = ""): Pair<Boolean, String> {
+        val payload = ESC_INIT + ESC_OPEN_DRAWER
+        val (ok, msg) = printPayload(context, deviceAddress, payload)
+        return if (ok) Pair(true, "Cash Drawer RJ11 Kick Signal Sent!") else Pair(false, msg)
+    }
+
+    /**
+     * Pack C: Builds 58mm/80mm KOT Kitchen / Pharmacy Packing Slip payload (without financial prices).
+     */
+    fun buildKotPayload(
+        businessName: String,
+        orderId: String,
+        dateStr: String,
+        orderMode: String,
+        tableOrRef: String,
+        cashierName: String,
+        items: List<PosOrderItem>
+    ): ByteArray {
+        val buffer = java.io.ByteArrayOutputStream()
+        fun write(bytes: ByteArray) = buffer.write(bytes)
+        fun writeLine(text: String = "") = buffer.write("$text\n".toByteArray(Charsets.ISO_8859_1))
+
+        write(ESC_INIT)
+        write(ESC_ALIGN_CENTER)
+        write(ESC_BOLD_ON)
+        write(ESC_DOUBLE_SIZE)
+        writeLine("KOT / PACK SLIP")
+        write(ESC_NORMAL_SIZE)
+        write(ESC_BOLD_OFF)
+        writeLine(businessName.take(32))
+        writeLine("--------------------------------")
+        write(ESC_ALIGN_LEFT)
+        write(ESC_BOLD_ON)
+        writeLine("MODE : $orderMode ${if (tableOrRef.isNotBlank()) "($tableOrRef)" else ""}")
+        write(ESC_BOLD_OFF)
+        writeLine("DOC #: $orderId")
+        writeLine("TIME : $dateStr")
+        writeLine("BY   : $cashierName")
+        writeLine("--------------------------------")
+        write(ESC_BOLD_ON)
+        writeLine(String.format("%-24s %6s", "ITEM DESCRIPTION", "QTY"))
+        write(ESC_BOLD_OFF)
+        writeLine("--------------------------------")
+        items.forEach { it ->
+            writeLine(String.format("%-24s %6d", it.name.take(24), it.quantity))
+        }
+        writeLine("--------------------------------")
+        write(ESC_ALIGN_CENTER)
+        writeLine("[ ] PACKED   [ ] CHECKED")
+        writeLine("\n\n")
+        write(ESC_FEED_AND_CUT)
+        return buffer.toByteArray()
+    }
+
+    fun buildKotText(
+        businessName: String,
+        orderId: String,
+        dateStr: String,
+        orderMode: String,
+        tableOrRef: String,
+        cashierName: String,
+        items: List<PosOrderItem>
+    ): String {
+        val sb = StringBuilder()
+        sb.appendLine("========================================")
+        sb.appendLine("      KOT KITCHEN / PACKING SLIP        ")
+        sb.appendLine("========================================")
+        sb.appendLine(businessName)
+        sb.appendLine("Doc #    : $orderId")
+        sb.appendLine("Mode     : $orderMode ${if (tableOrRef.isNotBlank()) "($tableOrRef)" else ""}")
+        sb.appendLine("Time     : $dateStr")
+        sb.appendLine("Cashier  : $cashierName")
+        sb.appendLine("----------------------------------------")
+        sb.appendLine(String.format("%-30s %8s", "ITEM", "QTY"))
+        sb.appendLine("----------------------------------------")
+        items.forEach { it ->
+            sb.appendLine(String.format("%-30s %8d", it.name.take(30), it.quantity))
+        }
+        sb.appendLine("========================================")
+        return sb.toString()
+    }
+
+    /**
+     * Pack C: Renders & prints a multi-column A4 Barcode Price-Tag / Shelf Sticker Sheet PDF (3x8 labels per page).
+     */
+    fun printBarcodePriceTagsPdf(
+        context: Context,
+        businessName: String,
+        currency: String,
+        products: List<PosProduct>
+    ) {
+        if (products.isEmpty()) {
+            Toast.makeText(context, "No products to generate barcode tags for.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val printManager = context.getSystemService(Context.PRINT_SERVICE) as? PrintManager
+        if (printManager == null) {
+            Toast.makeText(context, "System printing service unavailable.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val cols = 3
+        val rows = 8
+        val perPage = cols * rows
+        val totalPages = ((products.size + perPage - 1) / perPage).coerceAtLeast(1)
+
+        val adapter = object : PrintDocumentAdapter() {
+            private var pdfDocument: PdfDocument? = null
+
+            override fun onLayout(
+                oldAttributes: PrintAttributes?,
+                newAttributes: PrintAttributes?,
+                cancellationSignal: CancellationSignal?,
+                callback: LayoutResultCallback?,
+                extras: Bundle?
+            ) {
+                if (cancellationSignal?.isCanceled == true) {
+                    callback?.onLayoutCancelled()
+                    return
+                }
+                val info = PrintDocumentInfo.Builder("OmniPOS_Barcode_Price_Tags.pdf")
+                    .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                    .setPageCount(totalPages)
+                    .build()
+                callback?.onLayoutFinished(info, true)
+            }
+
+            override fun onWrite(
+                pages: Array<out PageRange>?,
+                destination: ParcelFileDescriptor?,
+                cancellationSignal: CancellationSignal?,
+                callback: WriteResultCallback?
+            ) {
+                try {
+                    val doc = PdfDocument()
+                    pdfDocument = doc
+                    val pageWidth = 595
+                    val pageHeight = 842
+                    val marginX = 24f
+                    val marginY = 30f
+                    val gapX = 10f
+                    val gapY = 8f
+                    val cellW = (pageWidth - 2 * marginX - (cols - 1) * gapX) / cols
+                    val cellH = (pageHeight - 2 * marginY - (rows - 1) * gapY) / rows
+
+                    val borderPaint = Paint().apply {
+                        color = Color.LTGRAY
+                        style = Paint.Style.STROKE
+                        strokeWidth = 1f
+                    }
+                    val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = Color.DKGRAY
+                        textSize = 7.5f
+                        typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                    }
+                    val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = Color.BLACK
+                        textSize = 9.5f
+                        typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                    }
+                    val pricePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = Color.parseColor("#0D6E4E")
+                        textSize = 12.5f
+                        typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                    }
+                    val codePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = Color.BLACK
+                        textSize = 7.5f
+                        typeface = Typeface.MONOSPACE
+                        textAlign = Paint.Align.CENTER
+                    }
+                    val barPaint = Paint().apply {
+                        color = Color.BLACK
+                        style = Paint.Style.FILL
+                    }
+
+                    for (pageIdx in 0 until totalPages) {
+                        val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageIdx + 1).create()
+                        val page = doc.startPage(pageInfo)
+                        val canvas = page.canvas
+                        canvas.drawColor(Color.WHITE)
+
+                        val startIdx = pageIdx * perPage
+                        val endIdx = minOf(products.size, startIdx + perPage)
+                        for (i in startIdx until endIdx) {
+                            val localIdx = i - startIdx
+                            val col = localIdx % cols
+                            val row = localIdx / cols
+                            val x = marginX + col * (cellW + gapX)
+                            val y = marginY + row * (cellH + gapY)
+                            val rect = RectF(x, y, x + cellW, y + cellH)
+                            canvas.drawRoundRect(rect, 5f, 5f, borderPaint)
+
+                            val p = products[i]
+                            val codeVal = p.barcode.ifBlank { p.sku.ifBlank { p.id } }
+
+                            canvas.drawText(businessName.take(24), x + 7f, y + 12f, headerPaint)
+                            canvas.drawText(p.name.take(24), x + 7f, y + 24f, namePaint)
+
+                            val priceText = "$currency ${p.price.toInt()}"
+                            canvas.drawText(priceText, x + 7f, y + 38f, pricePaint)
+
+                            if (p.batchNumber.isNotBlank() || p.expiryDate.isNotBlank()) {
+                                val meta = buildString {
+                                    if (p.batchNumber.isNotBlank()) append("B:${p.batchNumber} ")
+                                    if (p.expiryDate.isNotBlank()) append("E:${p.expiryDate}")
+                                }
+                                canvas.drawText(meta.take(18), x + cellW - 72f, y + 37f, headerPaint)
+                            }
+
+                            // Deterministic vector barcode stripes inside sticker
+                            val barStartX = x + 12f
+                            val barWidth = cellW - 24f
+                            val barTop = y + 44f
+                            val barBottom = y + cellH - 18f
+                            val hashSeed = codeVal.hashCode()
+                            var curX = barStartX
+                            var step = 0
+                            while (curX < barStartX + barWidth - 3f) {
+                                val charBit = codeVal[step % codeVal.length].code
+                                val thick = if (((charBit + step + hashSeed) and 1) == 0) 2.2f else 1.1f
+                                val gap = if (((charBit * 3 + step) and 1) == 0) 1.8f else 1.2f
+                                canvas.drawRect(curX, barTop, curX + thick, barBottom, barPaint)
+                                curX += thick + gap
+                                step++
+                            }
+
+                            canvas.drawText(codeVal.take(20), x + cellW / 2f, y + cellH - 6f, codePaint)
+                        }
+                        doc.finishPage(page)
+                    }
+
+                    destination?.let { pfd ->
+                        FileOutputStream(pfd.fileDescriptor).use { out -> doc.writeTo(out) }
+                    }
+                    doc.close()
+                    callback?.onWriteFinished(arrayOf(PageRange.ALL_PAGES))
+                } catch (e: Exception) {
+                    callback?.onWriteFailed(e.message)
+                }
+            }
+        }
+
+        printManager.print("OmniPOS_Barcode_Price_Tags", adapter, PrintAttributes.Builder().setMediaSize(PrintAttributes.MediaSize.ISO_A4).build())
+    }
+
+    /**
+     * Pack C: Exports and shares JSON/CSV enterprise backup files via Android Share Sheet.
+     */
+    fun sharePosExportFile(context: Context, fileName: String, content: String, mimeType: String = "application/json") {
+        try {
+            val cacheDir = File(context.cacheDir, "pos_backups").apply { mkdirs() }
+            val file = File(cacheDir, fileName)
+            file.writeText(content)
+            val uri = FileProvider.getUriForFile(context, "com.drtahir.studentkit.fileprovider", file)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, fileName)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "Save / Share $fileName"))
+        } catch (e: Exception) {
+            Toast.makeText(context, "Export error: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 }

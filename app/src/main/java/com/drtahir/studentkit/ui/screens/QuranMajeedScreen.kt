@@ -9,6 +9,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -180,6 +181,10 @@ class QuranSettingsManager(context: Context) {
     var quranFontFamily: String
         get() = prefs.getString("quran_font_family", "Serif") ?: "Serif"
         set(value) = prefs.edit().putString("quran_font_family", value).apply()
+
+    var bundledSeedVersion: Int
+        get() = prefs.getInt("bundled_seed_version", 0)
+        set(value) = prefs.edit().putInt("bundled_seed_version", value).apply()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -246,35 +251,24 @@ fun QuranMajeedScreen(
     // Bookmarks state (loads on launch)
     var bookmarkedVerses by remember { mutableStateOf<List<String>>(emptyList()) }
     
-    // Offline preloaded Surahs check
+    // Offline bundled + cached Quran check (all 114 Surahs, 30 Paras, 6,236 Verses)
     var cachedCount by remember { mutableStateOf(0) }
-    
+
     LaunchedEffect(Unit) {
-        cachedCount = viewModel.getCachedQuranVersesCount()
-        // Save preloaded short Surahs so the user has offline content right away
-        if (cachedCount < 22) {
-            savePreloadedSurahs(viewModel)
-            cachedCount = viewModel.getCachedQuranVersesCount()
-        }
-        
-        // Quietly background download Para 1 & 2 (pages 1 to 41) to ensure Urdu/Arabic are completely offline on launch
-        coroutineScope.launch(Dispatchers.IO) {
-            try {
-                for (page in 1..41) {
-                    val existing = viewModel.getCachedVersesForPage(page).first()
-                    val hasArabicPlaceholder = existing.isNotEmpty() && existing.any { it.textUrdu.isNotEmpty() && it.textUrdu.trim() == it.textArabic.trim() }
-                    if (existing.isEmpty() || hasArabicPlaceholder) {
-                        val verses = downloadQuranPage(page)
-                        if (verses.isNotEmpty()) {
-                            viewModel.insertQuranVerses(verses)
-                            withContext(Dispatchers.Main) {
-                                cachedCount = viewModel.getCachedQuranVersesCount()
-                            }
-                        }
-                    }
+        withContext(Dispatchers.IO) {
+            val initialCount = viewModel.getCachedQuranVersesCount()
+            if (settingsManager.bundledSeedVersion < 2 || initialCount < 6236) {
+                val bundled = loadBundledQuranFromAssets(context)
+                if (bundled.size == 6236) {
+                    viewModel.insertQuranVersesSuspend(bundled)
+                    settingsManager.bundledSeedVersion = 2
+                } else if (initialCount < 22) {
+                    savePreloadedSurahs(viewModel)
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
+            }
+            val updatedCount = viewModel.getCachedQuranVersesCount()
+            withContext(Dispatchers.Main) {
+                cachedCount = updatedCount
             }
         }
     }
@@ -282,10 +276,12 @@ fun QuranMajeedScreen(
     val indexThemeColors = remember(readerTheme) { getQuranThemeColors(readerTheme) }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         containerColor = indexThemeColors.bgColor,
         topBar = {
             if (!isImmersiveMode && selectedSurah == null && readerModePage == null) {
                 TopAppBar(
+                    windowInsets = WindowInsets(0.dp),
                     title = {
                         Column {
                             Text(
@@ -326,6 +322,7 @@ fun QuranMajeedScreen(
         bottomBar = {
             if (!isImmersiveMode && selectedSurah == null && readerModePage == null) {
                 NavigationBar(
+                    windowInsets = WindowInsets(0.dp),
                     containerColor = indexThemeColors.bgColor,
                     tonalElevation = 8.dp
                 ) {
@@ -994,7 +991,7 @@ fun QuranDisplaySettingsDialog(
                 ) {
                     Column {
                         Text("English Translation", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = themeColors.txtUrduColor)
-                        Text("(Coming Soon)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeColors.decorationColor)
+                        Text("(Sahih International)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeColors.decorationColor)
                     }
                     Switch(
                         checked = isEnglishEnabled,
@@ -1203,7 +1200,9 @@ fun QariSelectionDialog(
 fun stripBismillahPrefix(text: String): String {
     val bismillahPatterns = listOf(
         "بِسۡمِ ٱللَّهِ ٱلرَّحۡمَـٰنِ ٱلرَّحِیمِ",
+        "بِّسۡمِ ٱللَّهِ ٱلرَّحۡمَـٰنِ ٱلرَّحِیمِ",
         "بِسۡمِ ٱللَّهِ ٱلرَّحۡمَـٰنِ ٱلرَّحِيمِ",
+        "بِّسۡمِ ٱللَّهِ ٱلرَّحۡمَـٰنِ ٱلرَّحِيمِ",
         "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
         "بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِیْمِ",
         "بِسْمِ اللهِ الرَّحْمٰنِ الرَّحِيْمِ",
@@ -1219,8 +1218,16 @@ fun stripBismillahPrefix(text: String): String {
             break
         }
     }
-    val regex = Regex("^[\\s\\u064B-\\u065F\\u0670]*بِ?سۡ?مِ?\\s+[ٱا]?ل[ـَّٰ]*ل[ـَّٰ]*هِ?\\s+[ٱا]?ل[ـَّٰ]*ر[ـَّٰ]*ح[ـَّٰ]*م[ـَّٰ]*[ـٰنِ]*\\s+[ٱا]?ل[ـَّٰ]*ر[ـَّٰ]*ح[ـَّٰ]*[یي][ـَّٰ]*مِ?[\\s\\u064B-\\u065F\\u0670]*")
-    result = regex.replace(result, "").trim()
+    val diac = "[\\u0610-\\u061A\\u064B-\\u065F\\u0670\\u06D6-\\u06ED\\u0640]*"
+    val regex = Regex(
+        "^[\\s\\u0610-\\u061A\\u064B-\\u065F\\u0670\\u06D6-\\u06ED]*" +
+        "ب${diac}س${diac}م${diac}\\s+" +
+        "[ٱا]?ل${diac}ل${diac}ه${diac}\\s+" +
+        "[ٱا]?ل${diac}ر${diac}ح${diac}م${diac}ن${diac}\\s+" +
+        "[ٱا]?ل${diac}ر${diac}ح${diac}[یي]${diac}م${diac}" +
+        "[\\s\\u0610-\\u061A\\u064B-\\u065F\\u0670\\u06D6-\\u06ED]*"
+    )
+    result = regex.replaceFirst(result, "").trim()
     return if (result.isEmpty()) text else result
 }
 
@@ -1248,53 +1255,53 @@ suspend fun downloadQuranSurah(surahNum: Int): List<CachedQuranVerse> {
         return listOf(
             CachedQuranVerse(
                 id = "1_1", surahNumber = 1, verseNumber = 1, juz = 1, page = 1,
+                textArabic = "بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِیْمِ",
+                textUrdu = "شروع اللہ کے نام سے جو بڑا مہربان نہایت رحم والا ہے۔",
+                textEnglish = "In the name of Allah, the Entirely Merciful, the Especially Merciful."
+            ),
+            CachedQuranVerse(
+                id = "1_2", surahNumber = 1, verseNumber = 2, juz = 1, page = 1,
                 textArabic = "اَلْحَمْدُ لِلّٰهِ رَبِّ الْعٰلَمِیْنَۙ",
                 textUrdu = "سب تعریفیں اللہ ہی کے لیے ہیں جو تمام جہانوں کا پالنے والا ہے۔",
                 textEnglish = "[All] praise is [due] to Allah, Lord of the worlds -"
             ),
             CachedQuranVerse(
-                id = "1_2", surahNumber = 1, verseNumber = 2, juz = 1, page = 1,
+                id = "1_3", surahNumber = 1, verseNumber = 3, juz = 1, page = 1,
                 textArabic = "الرَّحْمٰنِ الرَّحِیْمِۙ",
                 textUrdu = "بڑا مہربان نہایت رحم والا ہے۔",
                 textEnglish = "The Entirely Merciful, the Especially Merciful,"
             ),
             CachedQuranVerse(
-                id = "1_3", surahNumber = 1, verseNumber = 3, juz = 1, page = 1,
+                id = "1_4", surahNumber = 1, verseNumber = 4, juz = 1, page = 1,
                 textArabic = "مٰلِكِ یَوْمِ الدِّیْنِؕ",
                 textUrdu = "روزِ جزا کا مالک ہے۔",
                 textEnglish = "Sovereign of the Day of Recompense."
             ),
             CachedQuranVerse(
-                id = "1_4", surahNumber = 1, verseNumber = 4, juz = 1, page = 1,
+                id = "1_5", surahNumber = 1, verseNumber = 5, juz = 1, page = 1,
                 textArabic = "اِیَّاكَ نَعْبُدُ وَاِیَّاكَ نَسْتَعِیْنُؕ",
                 textUrdu = "ہم تیری ہی عبادت کرتے ہیں اور تجھ ہی سے مدد مانگتے ہیں۔",
                 textEnglish = "It is You we worship and You we ask for help."
             ),
             CachedQuranVerse(
-                id = "1_5", surahNumber = 1, verseNumber = 5, juz = 1, page = 1,
+                id = "1_6", surahNumber = 1, verseNumber = 6, juz = 1, page = 1,
                 textArabic = "اِهْدِنَا الصِّرَاطَ الْمُسْتَقِیْمَۙ",
                 textUrdu = "ہمیں سیدھے راستے پر چلا۔",
                 textEnglish = "Guide us to the straight path -"
             ),
             CachedQuranVerse(
-                id = "1_6", surahNumber = 1, verseNumber = 6, juz = 1, page = 1,
-                textArabic = "صِرَاطَ الَّذِیْنَ اَنْعَمْتَ عَلَیْهِمْ ۙ",
-                textUrdu = "ان لوگوں کے راستے پر جن پر تو نے انعام کیا،",
-                textEnglish = "The path of those upon whom You have bestowed favor,"
-            ),
-            CachedQuranVerse(
                 id = "1_7", surahNumber = 1, verseNumber = 7, juz = 1, page = 1,
-                textArabic = "غَیْرِ الْمَغْضُوْبِ عَلَیْهِمْ وَلَا الضَّآلِّیْنَؒ",
-                textUrdu = "نہ کہ ان کے راستے پر جن پر تیرا غضب ہوا اور نہ ہی گمراہوں کے راستے۔",
-                textEnglish = "Not of those who have evoked [Your] anger or of those who are astray."
+                textArabic = "صِرَاطَ الَّذِیْنَ اَنْعَمْتَ عَلَیْهِمْ ۙ غَیْرِ الْمَغْضُوْبِ عَلَیْهِمْ وَلَا الضَّآلِّیْنَؒ",
+                textUrdu = "ان لوگوں کے راستے پر جن پر تو نے انعام کیا، نہ کہ ان کے راستے پر جن پر تیرا غضب ہوا اور نہ ہی گمراہوں کے راستے۔",
+                textEnglish = "The path of those upon whom You have bestowed favor, not of those who have evoked [Your] anger or of those who are astray."
             )
         )
     }
 
     val versesList = mutableListOf<CachedQuranVerse>()
     try {
-        // Fetch Arabic Indo-Pak Pakistani Script + Urdu Jalandhry Translation
-        val urlStr = "https://api.alquran.cloud/v1/surah/$surahNum/editions/quran-indopak,ur.jalandhry,en.transliteration"
+        // Fetch Arabic Indo-Pak Pakistani Script + Urdu Jalandhry + English Sahih International
+        val urlStr = "https://api.alquran.cloud/v1/surah/$surahNum/editions/quran-indopak,ur.jalandhry,en.sahih"
         val url = URL(urlStr)
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "GET"
@@ -1405,43 +1412,50 @@ fun QuranPageReader(
     var showDisplaySettings by remember { mutableStateOf(false) }
     var showQariSelectorDialog by remember { mutableStateOf(false) }
     
-    // Page state
-    var currentPage by remember { mutableStateOf(if (initialPageNum > 0) initialPageNum else getPageForSurah(surah.number)) }
-    
-    // Loaded verses
+    // Page & continuous stream state
+    val startPage = remember(initialPageNum, surah.number) {
+        if (initialPageNum > 0) initialPageNum else getPageForSurah(surah.number)
+    }
+    var currentPage by remember(startPage) { mutableStateOf(startPage) }
+    var isContinuousStream by remember { mutableStateOf(false) }
+
+    // Loaded verses (all 6,236 verses for continuous swipe-up browsing, or single page fallback)
     var versesForPage by remember { mutableStateOf<List<CachedQuranVerse>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
     var networkError by remember { mutableStateOf<String?>(null) }
-    
+    var reloadTrigger by remember { mutableIntStateOf(0) }
+
     // Auto-scroll and verse highlighting states
     var activeVerseId by remember { mutableStateOf<String?>(null) }
     var autoPlayNextPage by remember { mutableStateOf(false) }
     val lazyListState = rememberLazyListState()
-    
-    var hasScrolledToTarget by remember(currentPage, targetAyahKey, surah.number) { mutableStateOf(false) }
 
-    LaunchedEffect(versesForPage, targetAyahKey, currentPage) {
-        if (!hasScrolledToTarget && versesForPage.isNotEmpty()) {
-            val targetKey = targetAyahKey
-            val targetIndex = if (targetKey != null) {
-                val parts = targetKey.split(":", "_")
-                if (parts.size >= 2) {
-                    val s = parts[0].toIntOrNull()
-                    val a = parts[1].toIntOrNull()
-                    versesForPage.indexOfFirst { it.surahNumber == s && it.verseNumber == a }
-                } else {
-                    versesForPage.indexOfFirst { "${it.surahNumber}:${it.verseNumber}" == targetKey || it.id == targetKey }
+    val pageStartIndexMap = remember(versesForPage, isContinuousStream) {
+        if (!isContinuousStream) emptyMap()
+        else {
+            val map = LinkedHashMap<Int, Int>(604)
+            versesForPage.forEachIndexed { idx, v ->
+                if (!map.containsKey(v.page)) {
+                    map[v.page] = idx
                 }
-            } else {
-                versesForPage.indexOfFirst { it.surahNumber == surah.number }
             }
-            if (targetIndex >= 0) {
-                if (targetIndex > 0) {
-                    lazyListState.scrollToItem(targetIndex)
+            map
+        }
+    }
+
+    fun jumpToPageSmooth(targetPage: Int, animate: Boolean = true) {
+        val clamped = targetPage.coerceIn(1, 604)
+        if (isContinuousStream) {
+            val targetIdx = pageStartIndexMap[clamped]
+                ?: versesForPage.indexOfFirst { it.page >= clamped }
+            if (targetIdx >= 0) {
+                coroutineScope.launch {
+                    if (animate) lazyListState.animateScrollToItem(targetIdx)
+                    else lazyListState.scrollToItem(targetIdx)
                 }
-                activeVerseId = versesForPage[targetIndex].id
-                hasScrolledToTarget = true
             }
+        } else {
+            currentPage = clamped
         }
     }
 
@@ -1450,14 +1464,25 @@ fun QuranPageReader(
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isPlayingAudio by remember { mutableStateOf(false) }
 
-    val currentVisibleSurahNum = remember {
+    val currentVisibleVerse = remember {
         derivedStateOf {
-            val visibleIndex = lazyListState.firstVisibleItemIndex
-            if (visibleIndex >= 0 && visibleIndex < versesForPage.size) {
-                versesForPage[visibleIndex].surahNumber
+            versesForPage.getOrNull(lazyListState.firstVisibleItemIndex)
+        }
+    }
+
+    val currentVisiblePageNum = remember(startPage) {
+        derivedStateOf {
+            if (isContinuousStream) {
+                currentVisibleVerse.value?.page ?: currentPage
             } else {
-                surah.number
+                currentPage
             }
+        }
+    }
+
+    val currentVisibleSurahNum = remember(surah.number) {
+        derivedStateOf {
+            currentVisibleVerse.value?.surahNumber ?: surah.number
         }
     }
 
@@ -1465,14 +1490,9 @@ fun QuranPageReader(
         getSurahList().firstOrNull { it.number == currentVisibleSurahNum.value } ?: surah
     }
 
-    val currentVisibleJuzNum = remember {
+    val currentVisibleJuzNum = remember(startPage) {
         derivedStateOf {
-            val visibleIndex = lazyListState.firstVisibleItemIndex
-            if (visibleIndex >= 0 && visibleIndex < versesForPage.size) {
-                versesForPage[visibleIndex].juz
-            } else {
-                getJuzForPage(currentPage)
-            }
+            currentVisibleVerse.value?.juz ?: getJuzForPage(currentVisiblePageNum.value)
         }
     }
 
@@ -1504,17 +1524,17 @@ fun QuranPageReader(
             // silent catch
         }
         mediaPlayer = null
-        
+
         activeVerseId = verse.id
         isPlayingAudio = true
-        
+
         val index = versesForPage.indexOfFirst { it.id == verse.id }
         if (index >= 0) {
             coroutineScope.launch {
                 lazyListState.animateScrollToItem(index)
             }
         }
-        
+
         coroutineScope.launch(Dispatchers.IO) {
             try {
                 val surahFormatted = String.format("%03d", verse.surahNumber)
@@ -1531,7 +1551,7 @@ fun QuranPageReader(
                     urlStr
                 }
                 activeRecitationUrl = dataSource
-                
+
                 val mp = MediaPlayer().apply {
                     setDataSource(dataSource)
                     prepare()
@@ -1544,7 +1564,7 @@ fun QuranPageReader(
                         if (nextIndex >= 0 && nextIndex < versesForPage.size) {
                             playVerse(versesForPage[nextIndex])
                         } else {
-                            if (currentPage < 604) {
+                            if (!isContinuousStream && currentPage < 604) {
                                 autoPlayNextPage = true
                                 currentPage++
                             } else {
@@ -1564,12 +1584,71 @@ fun QuranPageReader(
             }
         }
     }
-    
-    // Fetch Quran verses - Page Mode across whole Quran (pages 1 to 604)
-    LaunchedEffect(currentPage) {
+
+    // Load continuous 6,236-verse stream for smooth vertical swipe-up browsing (with single-page fallback)
+    LaunchedEffect(surah.number, initialPageNum, targetAyahKey, reloadTrigger) {
         isLoading = true
         networkError = null
-        
+
+        val fullVerses = withContext(Dispatchers.IO) {
+            val cachedAll = viewModel.getAllCachedQuranVersesSuspend()
+            val validFullCache = cachedAll.size >= 6236 &&
+                !cachedAll.any { it.textUrdu.isNotEmpty() && it.textUrdu.trim() == it.textArabic.trim() }
+            if (validFullCache) {
+                cachedAll
+            } else {
+                val bundled = loadBundledQuranFromAssets(context)
+                if (bundled.size == 6236) {
+                    coroutineScope.launch(Dispatchers.IO) { viewModel.insertQuranVersesSuspend(bundled) }
+                    bundled
+                } else {
+                    emptyList()
+                }
+            }
+        }
+
+        if (fullVerses.isNotEmpty()) {
+            val targetIdx = run {
+                val key = targetAyahKey
+                if (key != null) {
+                    val parts = key.split(":", "_")
+                    if (parts.size >= 2) {
+                        val s = parts[0].toIntOrNull()
+                        val a = parts[1].toIntOrNull()
+                        fullVerses.indexOfFirst { it.surahNumber == s && it.verseNumber == a }
+                    } else {
+                        fullVerses.indexOfFirst { "${it.surahNumber}:${it.verseNumber}" == key || it.id == key }
+                    }
+                } else if (initialPageNum > 0) {
+                    fullVerses.indexOfFirst { it.page >= initialPageNum }
+                } else {
+                    fullVerses.indexOfFirst { it.surahNumber == surah.number }
+                }
+            }.let { idx ->
+                if (idx >= 0) idx else fullVerses.indexOfFirst { it.surahNumber == surah.number }.coerceAtLeast(0)
+            }
+
+            isContinuousStream = true
+            versesForPage = fullVerses
+            if (targetAyahKey != null && targetIdx in fullVerses.indices) {
+                activeVerseId = fullVerses[targetIdx].id
+            }
+            lazyListState.scrollToItem(targetIdx)
+            isLoading = false
+        } else {
+            isContinuousStream = false
+            currentPage = startPage
+        }
+    }
+
+    // Fallback per-page loader only when full continuous stream isn't available
+    LaunchedEffect(currentPage, isContinuousStream, reloadTrigger) {
+        if (isContinuousStream) return@LaunchedEffect
+        val existingCount = withContext(Dispatchers.IO) { viewModel.getCachedQuranVersesCount() }
+        if (existingCount >= 6236) return@LaunchedEffect
+
+        isLoading = true
+        networkError = null
         viewModel.getCachedVersesForPage(currentPage).first().let { cached ->
             val hasArabicPlaceholder = cached.isNotEmpty() && cached.any { it.textUrdu.isNotEmpty() && it.textUrdu.trim() == it.textArabic.trim() }
             if (cached.isNotEmpty() && !hasArabicPlaceholder) {
@@ -1612,7 +1691,7 @@ fun QuranPageReader(
         }
     }
 
-    DisposableEffect(currentPage, surah.number) {
+    DisposableEffect(surah.number, initialPageNum) {
         onDispose {
             stopAudio()
         }
@@ -1657,9 +1736,11 @@ fun QuranPageReader(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             if (!immersiveMode) {
                 TopAppBar(
+                    windowInsets = WindowInsets(0.dp),
                     title = {
                         Column {
                             Text(
@@ -1669,7 +1750,7 @@ fun QuranPageReader(
                                 color = decorationColor
                             )
                             Text(
-                                text = if (initialPageNum == 0) "Full Recitation • ${versesForPage.size} Ayahs" else "Page $currentPage of 604",
+                                text = "Page ${currentVisiblePageNum.value} of 604 • Para ${currentVisibleJuzNum.value} • Swipe Up",
                                 fontSize = 10.sp,
                                 color = txtUrduColor.copy(alpha = 0.7f)
                             )
@@ -1694,7 +1775,9 @@ fun QuranPageReader(
                             if (isPlayingAudio) {
                                 stopAudio()
                             } else {
-                                val targetVerse = activeVerseId?.let { id -> versesForPage.firstOrNull { "${it.surahNumber}:${it.verseNumber}" == id } }
+                                val targetVerse = activeVerseId?.let { id ->
+                                    versesForPage.firstOrNull { it.id == id || "${it.surahNumber}:${it.verseNumber}" == id }
+                                }
                                     ?: versesForPage.getOrNull(lazyListState.firstVisibleItemIndex)
                                     ?: versesForPage.firstOrNull { it.surahNumber == surah.number }
                                     ?: versesForPage.firstOrNull()
@@ -1718,8 +1801,8 @@ fun QuranPageReader(
         var offsetX by remember { mutableFloatStateOf(0f) }
         var offsetY by remember { mutableFloatStateOf(0f) }
 
-        // Reset zoom when page changes
-        LaunchedEffect(currentPage) {
+        // Reset zoom when opening a new initial entry point (not during continuous vertical scrolling)
+        LaunchedEffect(surah.number, initialPageNum, targetAyahKey) {
             scale = 1f
             offsetX = 0f
             offsetY = 0f
@@ -1730,7 +1813,7 @@ fun QuranPageReader(
                 .fillMaxSize()
                 .background(bgColor)
                 .padding(paddingValues)
-                .pointerInput(currentPage, scale) {
+                .pointerInput(scale) {
                     detectTapGestures(
                         onDoubleTap = {
                             if (scale > 1.1f) {
@@ -1745,13 +1828,13 @@ fun QuranPageReader(
                         }
                     )
                 }
-                .pointerInput(currentPage) {
+                .pointerInput(isContinuousStream) {
                     awaitEachGesture {
                         var accumulatedPanX = 0f
                         var accumulatedPanY = 0f
                         var isZoomGesture = false
-                        
-                        val down = awaitFirstDown(requireUnconsumed = false)
+
+                        awaitFirstDown(requireUnconsumed = false)
                         do {
                             val event = awaitPointerEvent()
                             val pointerCount = event.changes.size
@@ -1759,10 +1842,10 @@ fun QuranPageReader(
                                 isZoomGesture = true
                                 val zoomChange = event.calculateZoom()
                                 val panChange = event.calculatePan()
-                                
+
                                 val newScale = (scale * zoomChange).coerceIn(1f, 3.5f)
                                 scale = newScale
-                                
+
                                 if (scale > 1.01f) {
                                     val maxX = 600f * (scale - 1f)
                                     val maxY = 1000f * (scale - 1f)
@@ -1784,27 +1867,26 @@ fun QuranPageReader(
                                     offsetY = (offsetY + dragAmount.y).coerceIn(-maxY, maxY)
                                     change.consume()
                                 } else if (!isZoomGesture) {
-                                    // In unzoomed mode, do NOT consume the event so that child LazyColumn scrolls vertically with full smoothness!
+                                    // Unzoomed mode: leave all events unconsumed so LazyColumn handles native 60/120fps swipe-up fling scrolling cleanly!
                                     accumulatedPanX += dragAmount.x
                                     accumulatedPanY += dragAmount.y
                                 }
                             }
                         } while (event.changes.any { it.pressed })
-                        
-                        // Finger released: only trigger page turn if it was a distinct horizontal swipe rather than a vertical scroll
+
+                        // Optional horizontal swipe page-jump (only on clear horizontal swipe, never interfering with vertical swipe-up scrolling)
                         if (!isZoomGesture && scale <= 1.05f) {
-                            if (Math.abs(accumulatedPanX) > 100f && Math.abs(accumulatedPanX) > Math.abs(accumulatedPanY) * 1.5f) {
-                                if (accumulatedPanX < -100f) {
-                                    if (currentPage < 604) {
-                                        stopAudio()
-                                        currentPage++
+                            if (Math.abs(accumulatedPanX) > 130f && Math.abs(accumulatedPanX) > Math.abs(accumulatedPanY) * 1.8f) {
+                                val visiblePg = currentVisiblePageNum.value
+                                if (accumulatedPanX < -130f) {
+                                    if (visiblePg < 604) {
+                                        jumpToPageSmooth(visiblePg + 1, animate = true)
                                     } else {
                                         Toast.makeText(context, "Last page of Quran (604)", Toast.LENGTH_SHORT).show()
                                     }
-                                } else if (accumulatedPanX > 100f) {
-                                    if (currentPage > 1) {
-                                        stopAudio()
-                                        currentPage--
+                                } else if (accumulatedPanX > 130f) {
+                                    if (visiblePg > 1) {
+                                        jumpToPageSmooth(visiblePg - 1, animate = true)
                                     } else {
                                         Toast.makeText(context, "First page of Quran (1)", Toast.LENGTH_SHORT).show()
                                     }
@@ -1835,7 +1917,7 @@ fun QuranPageReader(
                         .padding(horizontal = 4.dp, vertical = 2.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Page / Surah Header Banner
+                    // Live Page / Surah Header Banner (updates automatically as you swipe up!)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1855,7 +1937,7 @@ fun QuranPageReader(
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "صفحة ${formatArabicNumber(currentPage)}",
+                                text = "صفحة ${formatArabicNumber(currentVisiblePageNum.value)}",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = decorationColor
@@ -1868,14 +1950,14 @@ fun QuranPageReader(
                             color = decorationColor
                         )
                     }
-                    
+
                     Spacer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(1.dp)
                             .background(borderColor.copy(alpha = 0.3f))
                     )
-                    
+
                     if (isLoading) {
                         Box(
                             modifier = Modifier
@@ -1919,7 +2001,7 @@ fun QuranPageReader(
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Button(
-                                    onClick = { currentPage = currentPage },
+                                    onClick = { reloadTrigger++ },
                                     colors = ButtonDefaults.buttonColors(containerColor = decorationColor)
                                 ) {
                                     Text("Retry Loading")
@@ -1927,16 +2009,82 @@ fun QuranPageReader(
                             }
                         }
                     } else {
-                        // FULL SCREEN LENGTH LAZY COLUMN FOR CONTINUOUS RECITATION
+                        // FULL CONTINUOUS SWIPE-UP LAZY COLUMN ACROSS ENTIRE QURAN
                         LazyColumn(
                             state = lazyListState,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp)
                         ) {
-                            items(versesForPage, key = { it.id }) { verse ->
+                            itemsIndexed(versesForPage, key = { _, it -> it.id }) { index, verse ->
                                 val isActive = activeVerseId == verse.id
+                                val prevVerse = if (index > 0) versesForPage[index - 1] else null
+
+                                // Subtle Para / Juz boundary banner when crossing into a new Para seamlessly
+                                if (isContinuousStream && prevVerse != null && prevVerse.juz != verse.juz) {
+                                    val juzMeta = getJuzList().firstOrNull { it.number == verse.juz }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 6.dp, bottom = 2.dp)
+                                            .background(borderColor.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+                                            .border(1.dp, borderColor.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                                            .padding(horizontal = 12.dp, vertical = 5.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Para ${verse.juz}${if (juzMeta != null) " • ${juzMeta.englishName}" else ""}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = decorationColor
+                                        )
+                                        Text(
+                                            text = "الجزء ${toArabicNumerals(verse.juz)}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = decorationColor
+                                        )
+                                    }
+                                }
+
+                                // Compact Mushaf Page transition divider inside continuous swipe-up stream
+                                if (isContinuousStream && prevVerse != null && prevVerse.page != verse.page) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Spacer(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(1.dp)
+                                                .background(borderColor.copy(alpha = 0.28f))
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(horizontal = 10.dp)
+                                                .background(borderColor.copy(alpha = 0.14f), RoundedCornerShape(12.dp))
+                                                .padding(horizontal = 10.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "صفحة ${formatArabicNumber(verse.page)} • Page ${verse.page}",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = decorationColor.copy(alpha = 0.85f)
+                                            )
+                                        }
+                                        Spacer(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(1.dp)
+                                                .background(borderColor.copy(alpha = 0.28f))
+                                        )
+                                    }
+                                }
 
                                 // Surah Header and Standalone Bismillah for Verse 1
                                 if (verse.verseNumber == 1) {
@@ -2129,7 +2277,7 @@ fun QuranPageReader(
                                                 textDirection = TextDirection.ContentOrRtl
                                             )
                                         )
-                                        
+
                                         // Urdu Translation
                                         if (isUrduEnabled) {
                                             Text(
@@ -2147,7 +2295,7 @@ fun QuranPageReader(
                                                 )
                                             )
                                         }
-                                        
+
                                         // English Translation
                                         if (isEnglishEnabled) {
                                             val englishText = if (verse.textEnglish.isNotBlank() &&
@@ -2171,8 +2319,8 @@ fun QuranPageReader(
                             }
                         }
                     }
-                    
-                    // Footer pagination controls & swipe hint
+
+                    // Footer quick-jump pagination controls & continuous swipe-up hint
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         modifier = Modifier
@@ -2183,12 +2331,12 @@ fun QuranPageReader(
                     ) {
                         Button(
                             onClick = {
-                                if (currentPage > 1) {
-                                    stopAudio()
-                                    currentPage--
+                                val visiblePg = currentVisiblePageNum.value
+                                if (visiblePg > 1) {
+                                    jumpToPageSmooth(visiblePg - 1, animate = true)
                                 }
                             },
-                            enabled = currentPage > 1,
+                            enabled = currentVisiblePageNum.value > 1,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = decorationColor,
                                 contentColor = Color.White,
@@ -2198,34 +2346,34 @@ fun QuranPageReader(
                             shape = RoundedCornerShape(20.dp),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                         ) {
-                            Icon(Icons.Default.ArrowBackIos, contentDescription = "Prev", tint = Color.White, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.ArrowBackIos, contentDescription = "Prev Page", tint = Color.White, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Prev", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
-                        
+
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = "صفحة ${formatArabicNumber(currentPage)} من ٦٠٤",
+                                text = "صفحة ${formatArabicNumber(currentVisiblePageNum.value)} من ٦٠٤",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = decorationColor
                             )
                             Text(
-                                text = "Swipe ← / → • Pinch to zoom",
+                                text = "Swipe ↑ / ↓ continuously • Pinch to zoom",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = txtUrduColor.copy(alpha = 0.7f)
                             )
                         }
-                        
+
                         Button(
                             onClick = {
-                                if (currentPage < 604) {
-                                    stopAudio()
-                                    currentPage++
+                                val visiblePg = currentVisiblePageNum.value
+                                if (visiblePg < 604) {
+                                    jumpToPageSmooth(visiblePg + 1, animate = true)
                                 }
                             },
-                            enabled = currentPage < 604,
+                            enabled = currentVisiblePageNum.value < 604,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = decorationColor,
                                 contentColor = Color.White,
@@ -2237,7 +2385,7 @@ fun QuranPageReader(
                         ) {
                             Text("Next", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Icon(Icons.Default.ArrowForwardIos, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.ArrowForwardIos, contentDescription = "Next Page", tint = Color.White, modifier = Modifier.size(14.dp))
                         }
                     }
                 }
@@ -2399,7 +2547,7 @@ fun QuranSettingsView(
                     ) {
                         Column {
                             Text("English Translation", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = themeColors.txtUrduColor)
-                            Text("(Coming Soon)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeColors.decorationColor)
+                            Text("(Sahih International)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeColors.decorationColor)
                         }
                         Switch(
                             checked = isEnglishEnabled, 
@@ -2596,6 +2744,13 @@ fun AnimatedQuranDownloadCard(
         downloadJob = coroutineScope.launch(Dispatchers.IO) {
             try {
                 val surahList = getSurahList()
+                val existingCount = viewModel.getCachedQuranVersesCount()
+                if (existingCount < totalVersesTarget) {
+                    val bundled = loadBundledQuranFromAssets(context)
+                    if (bundled.size == totalVersesTarget) {
+                        viewModel.insertQuranVersesSuspend(bundled)
+                    }
+                }
                 
                 for (s in 1..totalSurahs) {
                     if (!isActive) break
@@ -2607,18 +2762,25 @@ fun AnimatedQuranDownloadCard(
                         statusMessage = "Downloading Surah $s/114 ($surahName) & Voice (${activeQari.name})..."
                     }
 
-                    // Download Surah verses with up to 3 retries
-                    var surahVerses = downloadQuranSurah(s)
-                    var retries = 0
-                    while (surahVerses.isEmpty() && retries < 3 && isActive) {
-                        retries++
-                        delay(500)
-                        surahVerses = downloadQuranSurah(s)
+                    // Download Surah verses (with up to 3 retries) if online or verify cached count
+                    val existingSurahVerses = viewModel.getCachedVersesForSurah(s).first()
+                    val surahVerses = if (existingSurahVerses.size == (meta?.numberOfAyahs ?: 0)) {
+                        existingSurahVerses
+                    } else {
+                        var fetched = downloadQuranSurah(s)
+                        var retries = 0
+                        while (fetched.isEmpty() && retries < 3 && isActive) {
+                            retries++
+                            delay(500)
+                            fetched = downloadQuranSurah(s)
+                        }
+                        if (fetched.isNotEmpty()) {
+                            viewModel.insertQuranVersesSuspend(fetched)
+                        }
+                        fetched
                     }
 
                     if (surahVerses.isNotEmpty()) {
-                        viewModel.insertQuranVerses(surahVerses)
-                        
                         // Download voice audio files for every verse
                         for (verse in surahVerses) {
                             if (!isActive) break
@@ -2634,7 +2796,7 @@ fun AnimatedQuranDownloadCard(
                         statusMessage = "Surah $s/114 ($surahName) | Verses: $curCount / 6,236 | Voice Audio: $curAud files"
                         onUpdateCache()
                     }
-                    delay(150)
+                    delay(50)
                 }
 
                 // Final verification sweep to ensure ALL 6,236 verses are saved
@@ -2932,9 +3094,9 @@ fun AnimatedQuranDownloadCard(
                         isDownloading = false
                         statusMessage = "⏸️ Download paused by user."
                     } else {
-                        val isComplete = currentVerseCount >= 6236
+                        val isComplete = currentVerseCount >= 6236 && audioFilesCount >= 6236
                         if (isComplete) {
-                            statusMessage = "✅ Quran with voice is already downloaded in phone memory!"
+                            statusMessage = "✅ Quran text & voice audio are already downloaded in phone memory!"
                             Toast.makeText(
                                 context,
                                 "The Holy Quran with voice is already downloaded!",
@@ -3236,6 +3398,32 @@ suspend fun downloadQuranPage(pageNum: Int): List<CachedQuranVerse> {
                 }
             }
             
+            // Fetch English Sahih International translation
+            val urlEn = URL("https://api.alquran.cloud/v1/page/$pageNum/en.sahih")
+            val connEn = urlEn.openConnection() as HttpURLConnection
+            connEn.requestMethod = "GET"
+            connEn.connectTimeout = 8000
+            connEn.readTimeout = 8000
+
+            val englishMap = mutableMapOf<String, String>()
+            if (connEn.responseCode == 200) {
+                val readerEn = BufferedReader(InputStreamReader(connEn.inputStream))
+                val sbEn = StringBuilder()
+                while (readerEn.readLine().also { line = it } != null) {
+                    sbEn.append(line)
+                }
+                readerEn.close()
+
+                val objEn = JSONObject(sbEn.toString())
+                val dataEn = objEn.getJSONObject("data")
+                val ayahsEn = dataEn.getJSONArray("ayahs")
+                for (i in 0 until ayahsEn.length()) {
+                    val ayah = ayahsEn.getJSONObject(i)
+                    val key = "${ayah.getJSONObject("surah").getInt("number")}_${ayah.getInt("numberInSurah")}"
+                    englishMap[key] = ayah.getString("text")
+                }
+            }
+
             // Identify missing/repeated Arabic in Urdu translations
             val missingTranslations = mutableListOf<Pair<String, String>>()
             for (i in 0 until ayahsAr.length()) {
@@ -3279,7 +3467,7 @@ suspend fun downloadQuranPage(pageNum: Int): List<CachedQuranVerse> {
                 
                 val rawArabic = ayah.getString("text")
                 val rawUrdu = urduMap[key] ?: "اردو ترجمہ دستیاب نہیں ہے۔"
-                val textEnglish = "English translation cached offline."
+                val textEnglish = englishMap[key] ?: "English translation not available."
                 
                 val textArabic = if (ayahNum == 1 && surahNum != 1 && surahNum != 9) stripBismillahPrefix(rawArabic) else rawArabic
                 val textUrdu = if (ayahNum == 1 && surahNum != 1 && surahNum != 9) stripUrduBismillahPrefix(rawUrdu) else rawUrdu
@@ -3302,6 +3490,42 @@ suspend fun downloadQuranPage(pageNum: Int): List<CachedQuranVerse> {
         e.printStackTrace()
     }
     return versesList
+}
+
+fun loadBundledQuranFromAssets(context: Context): List<CachedQuranVerse> {
+    return try {
+        val rawJson = context.assets.open("quran_complete.bin").use { input ->
+            java.util.zip.GZIPInputStream(input).bufferedReader(Charsets.UTF_8).use { it.readText() }
+        }
+        val array = org.json.JSONArray(rawJson)
+        val result = ArrayList<CachedQuranVerse>(array.length())
+        for (i in 0 until array.length()) {
+            val item = array.getJSONArray(i)
+            val s = item.getInt(0)
+            val v = item.getInt(1)
+            val j = item.getInt(2)
+            val p = item.getInt(3)
+            val ar = item.getString(4)
+            val ur = item.getString(5)
+            val en = item.getString(6)
+            result.add(
+                CachedQuranVerse(
+                    id = "${s}_${v}",
+                    surahNumber = s,
+                    verseNumber = v,
+                    juz = j,
+                    page = p,
+                    textArabic = ar,
+                    textUrdu = ur,
+                    textEnglish = en
+                )
+            )
+        }
+        result
+    } catch (e: Exception) {
+        e.printStackTrace()
+        emptyList()
+    }
 }
 
 // Preload standard short Surahs so offline mode works instantly on fresh install in authentic Pakistani Indo-Pak script

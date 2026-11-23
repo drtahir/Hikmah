@@ -97,10 +97,14 @@ fun DocumentHubScreen(
     title: String,
     subScreen: @Composable () -> Unit
 ) {
+    val currentScreen by viewModel.currentScreen.collectAsState()
+
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
-                title = { Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                windowInsets = WindowInsets(0.dp),
+                title = { Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = { viewModel.navigateBack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -112,6 +116,43 @@ fun DocumentHubScreen(
                     }
                 }
             )
+        },
+        bottomBar = {
+            NavigationBar(
+                windowInsets = WindowInsets(0.dp),
+                tonalElevation = 4.dp
+            ) {
+                NavigationBarItem(
+                    selected = currentScreen is Screen.PdfTools,
+                    onClick = { viewModel.navigateTo(Screen.PdfTools) },
+                    icon = { Icon(Icons.Default.PictureAsPdf, contentDescription = "PDF Suite") },
+                    label = { Text("PDF Suite", fontSize = 10.sp, maxLines = 1) }
+                )
+                NavigationBarItem(
+                    selected = currentScreen is Screen.ImageToPdf,
+                    onClick = { viewModel.navigateTo(Screen.ImageToPdf) },
+                    icon = { Icon(Icons.Default.Image, contentDescription = "Img2PDF") },
+                    label = { Text("Img2PDF", fontSize = 10.sp, maxLines = 1) }
+                )
+                NavigationBarItem(
+                    selected = currentScreen is Screen.IdCardScanner,
+                    onClick = { viewModel.navigateTo(Screen.IdCardScanner) },
+                    icon = { Icon(Icons.Default.ContactPage, contentDescription = "ID Scan") },
+                    label = { Text("ID Scan", fontSize = 10.sp, maxLines = 1) }
+                )
+                NavigationBarItem(
+                    selected = currentScreen is Screen.CvBuilder,
+                    onClick = { viewModel.navigateTo(Screen.CvBuilder) },
+                    icon = { Icon(Icons.Default.Badge, contentDescription = "CV Maker") },
+                    label = { Text("CV Maker", fontSize = 10.sp, maxLines = 1) }
+                )
+                NavigationBarItem(
+                    selected = currentScreen is Screen.HospitalClerkAdmin,
+                    onClick = { viewModel.navigateTo(Screen.HospitalClerkAdmin) },
+                    icon = { Icon(Icons.Default.LocalHospital, contentDescription = "Clerk Kit") },
+                    label = { Text("Clerk Kit", fontSize = 10.sp, maxLines = 1) }
+                )
+            }
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {

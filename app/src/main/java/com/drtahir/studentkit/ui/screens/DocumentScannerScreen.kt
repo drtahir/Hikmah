@@ -90,6 +90,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.widthIn
@@ -1119,6 +1120,7 @@ fun DocumentScannerScreenNew(viewModel: StudentKitViewModel) {
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             if (activeTab == "Library" || scannerState == "VIEWFINDER") {
                 TabRow(
@@ -2059,6 +2061,7 @@ fun DocumentSignStudioView(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 4.dp) {
                 Row(
@@ -2387,6 +2390,7 @@ fun SmartEraseStudioView(
     val currentStroke = remember { mutableStateListOf<ErasePoint>() }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 4.dp) {
                 Row(
@@ -3493,7 +3497,6 @@ fun LiveCameraViewfinderView(
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .background(Color.Black.copy(alpha = 0.85f))
-                .navigationBarsPadding()
                 .padding(bottom = 12.dp, top = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)

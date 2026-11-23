@@ -96,8 +96,10 @@ fun IslamicHubScreen(
         HisnulMuslimReaderScreen(viewModel = viewModel, onBack = { showHisnulReader = false })
     } else {
         Scaffold(
+            contentWindowInsets = WindowInsets(0.dp),
             topBar = {
                 TopAppBar(
+                    windowInsets = WindowInsets(0.dp),
                     title = {
                         Column {
                             Text(
@@ -118,10 +120,52 @@ fun IslamicHubScreen(
                             Icon(Icons.Default.ArrowBack, contentDescription = "Back to Home", tint = EmeraldDark)
                         }
                     },
+                    actions = {
+                        IconButton(onClick = { viewModel.navigateTo(Screen.Dashboard) }) {
+                            Icon(Icons.Default.Home, contentDescription = "Home", tint = EmeraldDark)
+                        }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     )
                 )
+            },
+            bottomBar = {
+                NavigationBar(
+                    windowInsets = WindowInsets(0.dp),
+                    tonalElevation = 4.dp
+                ) {
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { showQuranMajeedReader = true },
+                        icon = { Icon(Icons.Default.MenuBook, contentDescription = "Quran") },
+                        label = { Text("Qur'an", fontSize = 10.sp, maxLines = 1) }
+                    )
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { showManzilReader = true },
+                        icon = { Icon(Icons.Default.Book, contentDescription = "Manzil") },
+                        label = { Text("Manzil", fontSize = 10.sp, maxLines = 1) }
+                    )
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { showNawawiReader = true },
+                        icon = { Icon(Icons.Default.LibraryBooks, contentDescription = "Hadith") },
+                        label = { Text("40 Hadith", fontSize = 10.sp, maxLines = 1) }
+                    )
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { showHisnulReader = true },
+                        icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "Hisnul") },
+                        label = { Text("Hisnul", fontSize = 10.sp, maxLines = 1) }
+                    )
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { viewModel.navigateTo(Screen.IslamicDaily) },
+                        icon = { Icon(Icons.Default.Explore, contentDescription = "Qibla") },
+                        label = { Text("Qibla", fontSize = 10.sp, maxLines = 1) }
+                    )
+                }
             }
         ) { paddingValues ->
         val books = listOf(
@@ -677,8 +721,10 @@ fun ManzilReaderScreen(
         }
     } else {
         Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
+                windowInsets = WindowInsets(0.dp),
                 title = {
                     Column {
                         Text(
@@ -1404,8 +1450,10 @@ fun NamazReaderScreen(
         }
     } else {
         Scaffold(
+            contentWindowInsets = WindowInsets(0.dp),
             topBar = {
                 TopAppBar(
+                    windowInsets = WindowInsets(0.dp),
                     title = {
                         Column {
                             Text(
@@ -2094,8 +2142,10 @@ fun JanazaReaderScreen(
         }
     } else {
         Scaffold(
+            contentWindowInsets = WindowInsets(0.dp),
             topBar = {
                 TopAppBar(
+                    windowInsets = WindowInsets(0.dp),
                     title = {
                         Column {
                             Text(
@@ -2558,8 +2608,10 @@ fun TaziyatReaderScreen(
         }
     } else {
         Scaffold(
+            contentWindowInsets = WindowInsets(0.dp),
             topBar = {
                 TopAppBar(
+                    windowInsets = WindowInsets(0.dp),
                     title = {
                         Column {
                             Text(

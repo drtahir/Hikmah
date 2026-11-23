@@ -260,8 +260,39 @@ data class PosProduct(
     val category: String,
     val price: Double,
     val stock: Int,
-    val unit: String
+    val unit: String,
+    val costPrice: Double = 0.0,
+    val sku: String = "",
+    val barcode: String = "",
+    val minStockAlert: Int = 10,
+    val batchNumber: String = "",
+    val expiryDate: String = "", // YYYY-MM-DD or YYYY-MM
+    val wholesalePrice: Double = 0.0,
+    val defaultTaxRate: Double = 0.0
 )
+
+/**
+ * Returns: 2 = Expired, 1 = Near Expiry (within 60 days), 0 = Healthy / No expiry
+ */
+fun PosProduct.expiryStatusCode(): Int {
+    val raw = expiryDate.trim()
+    if (raw.isBlank()) return 0
+    return try {
+        val pattern = if (raw.length <= 7) "yyyy-MM" else "yyyy-MM-dd"
+        val sdf = java.text.SimpleDateFormat(pattern, java.util.Locale.US).apply { isLenient = false }
+        val expDate = sdf.parse(raw) ?: return 0
+        val nowMs = System.currentTimeMillis()
+        val expMs = if (raw.length <= 7) expDate.time + 28L * 86400000L else expDate.time + 86399000L
+        val diffDays = (expMs - nowMs) / 86400000L
+        when {
+            diffDays < 0 -> 2
+            diffDays <= 60 -> 1
+            else -> 0
+        }
+    } catch (_: Exception) {
+        0
+    }
+}
 
 @Entity(tableName = "pos_clients")
 data class PosClient(
@@ -270,7 +301,11 @@ data class PosClient(
     val phone: String,
     val email: String,
     val address: String,
-    val type: String // "Customer" or "Supplier"
+    val type: String, // "Customer" or "Supplier"
+    val creditBalance: Double = 0.0, // Customer Khata receivable OR Supplier payable
+    val creditLimit: Double = 50000.0,
+    val loyaltyPoints: Int = 0,
+    val totalSpent: Double = 0.0
 )
 
 @Entity(tableName = "pos_orders")
@@ -282,7 +317,17 @@ data class PosOrder(
     val tax: Double,
     val discount: Double,
     val total: Double,
-    val documentType: String // "Invoice", "Receipt", "Estimate"
+    val documentType: String, // "Invoice", "Receipt", "Estimate", "Credit Note"
+    val paymentMethod: String = "Cash", // "Cash", "Card POS", "QR Wallet", "Credit / Khata", "Split"
+    val paymentBreakdown: String = "",
+    val paidAmount: Double = 0.0,
+    val changeDue: Double = 0.0,
+    val dueAmount: Double = 0.0,
+    val status: String = "Paid", // "Paid", "Partial", "Unpaid", "Returned", "Partial Return", "Estimate"
+    val cashierName: String = "Administrator",
+    val loyaltyEarned: Int = 0,
+    val orderMode: String = "Counter", // "Counter", "Takeaway", "Table / Ward", "Delivery"
+    val tableOrRef: String = ""
 )
 
 @Entity(tableName = "pos_order_items")
@@ -292,7 +337,60 @@ data class PosOrderItem(
     val productId: String,
     val name: String,
     val quantity: Int,
-    val price: Double
+    val price: Double,
+    val costPrice: Double = 0.0,
+    val returnedQty: Int = 0
+)
+
+@Entity(tableName = "pos_khata_transactions")
+data class PosKhataTransaction(
+    @PrimaryKey val id: String,
+    val clientId: String,
+    val clientName: String,
+    val date: String,
+    val type: String, // "Credit Sale", "Payment Received", "Supplier Bill", "Supplier Payment", "Credit Reversal"
+    val amount: Double,
+    val referenceId: String = "",
+    val paymentMethod: String = "Cash",
+    val note: String = ""
+)
+
+@Entity(tableName = "pos_purchase_orders")
+data class PosPurchaseOrder(
+    @PrimaryKey val id: String,
+    val date: String,
+    val supplierId: String?,
+    val supplierName: String,
+    val itemsSummary: String,
+    val totalCost: Double,
+    val paidAmount: Double,
+    val dueAmount: Double,
+    val status: String = "Received", // "Received", "Partial", "Unpaid"
+    val note: String = ""
+)
+
+@Entity(tableName = "pos_expenses")
+data class PosExpense(
+    @PrimaryKey val id: String,
+    val date: String,
+    val category: String, // "Rent", "Utilities", "Supplies & Bags", "Petty Cash Out", "Transport", "Marketing", "Cash In Top-up"
+    val amount: Double,
+    val paymentSource: String = "Cash Drawer", // "Cash Drawer", "Bank / Wallet"
+    val note: String = ""
+)
+
+@Entity(tableName = "pos_cash_drawer_sessions")
+data class PosCashDrawerSession(
+    @PrimaryKey val id: String,
+    val openedAt: String,
+    val closedAt: String? = null,
+    val openedBy: String,
+    val openingFloat: Double,
+    val expectedCash: Double = 0.0,
+    val countedCash: Double = 0.0,
+    val variance: Double = 0.0,
+    val notes: String = "",
+    val status: String = "OPEN" // "OPEN", "CLOSED"
 )
 
 // --- POS EMPLOYEES & STAFF MANAGEMENT ---
@@ -357,7 +455,11 @@ data class PosBusinessProfile(
     val logoUri: String = "",
     val showLogoOnInvoice: Boolean = true,
     val showLogoOnThermal: Boolean = true,
-    val thermalDitherThreshold: Int = 128
+    val thermalDitherThreshold: Int = 128,
+    val defaultTaxPercent: Double = 0.0,
+    val receiptFooter: String = "Thank you for your business!",
+    val autoKickDrawer: Boolean = true,
+    val loyaltyPointsPer100: Int = 1
 )
 
 fun getSavedBusinessProfile(context: android.content.Context): PosBusinessProfile {
@@ -376,7 +478,11 @@ fun getSavedBusinessProfile(context: android.content.Context): PosBusinessProfil
         logoUri = prefs.getString("biz_logo_uri", "") ?: "",
         showLogoOnInvoice = prefs.getBoolean("biz_show_logo_invoice", true),
         showLogoOnThermal = prefs.getBoolean("biz_show_logo_thermal", true),
-        thermalDitherThreshold = prefs.getInt("biz_thermal_threshold", 128)
+        thermalDitherThreshold = prefs.getInt("biz_thermal_threshold", 128),
+        defaultTaxPercent = prefs.getFloat("biz_default_tax_pct", 0f).toDouble(),
+        receiptFooter = prefs.getString("biz_receipt_footer", "Thank you for your business!") ?: "Thank you for your business!",
+        autoKickDrawer = prefs.getBoolean("biz_auto_kick_drawer", true),
+        loyaltyPointsPer100 = prefs.getInt("biz_loyalty_per_100", 1)
     )
 }
 
@@ -397,6 +503,10 @@ fun saveBusinessProfile(context: android.content.Context, profile: PosBusinessPr
         .putBoolean("biz_show_logo_invoice", profile.showLogoOnInvoice)
         .putBoolean("biz_show_logo_thermal", profile.showLogoOnThermal)
         .putInt("biz_thermal_threshold", profile.thermalDitherThreshold)
+        .putFloat("biz_default_tax_pct", profile.defaultTaxPercent.toFloat())
+        .putString("biz_receipt_footer", profile.receiptFooter)
+        .putBoolean("biz_auto_kick_drawer", profile.autoKickDrawer)
+        .putInt("biz_loyalty_per_100", profile.loyaltyPointsPer100)
         .apply()
 }
 

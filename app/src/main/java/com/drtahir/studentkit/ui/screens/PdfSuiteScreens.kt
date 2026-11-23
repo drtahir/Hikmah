@@ -45,8 +45,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -55,6 +57,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.drtahir.studentkit.data.PdfToWordConverter
+import com.drtahir.studentkit.data.StandardPdfCompressor
 import com.drtahir.studentkit.data.StandardPdfEncryptor
 import com.drtahir.studentkit.data.PdfMetadataManager
 import com.drtahir.studentkit.viewmodel.StudentKitViewModel
@@ -62,11 +66,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.Locale
 
 /**
- * Enumeration of all 13+ Offline PDF Suite Tools
+ * Enumeration of all 14+ Offline PDF Suite Tools
  */
 enum class ComprehensivePdfTool(
     val title: String,
@@ -79,6 +84,7 @@ enum class ComprehensivePdfTool(
     MERGE("Merge PDFs", "Combine multiple PDF documents into a single document", "Organization", Icons.Default.MergeType, "POPULAR"),
     SPLIT("Split & Extract", "Extract specific pages or page ranges into a new PDF", "Organization", Icons.Default.CallSplit, "CORE"),
     COMPRESS("Compress PDF", "Reduce PDF file size with adjustable compression", "Optimization", Icons.Default.PhotoSizeSelectLarge, "SIZE"),
+    PDF_TO_WORD("PDF to Word (.docx)", "Convert any digital or scanned PDF into an editable Word document", "Conversion", Icons.Default.Description, "DOCX"),
     PDF_TO_IMAGES("PDF to Images", "Convert PDF pages into high-res JPG or PNG images", "Conversion", Icons.Default.PictureInPicture, "EXPORT"),
     WATERMARK("Add Watermark", "Overlay custom text stamp or repeating watermark", "Security", Icons.Default.BrandingWatermark, "STAMP"),
     ROTATE("Rotate PDF", "Permanently rotate pages 90°, 180°, or 270°", "Organization", Icons.Default.RotateRight, "ORIENT"),
@@ -103,11 +109,15 @@ data class ComprehensivePdfFile(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
+fun EnhancedPdfToolsScreen(
+    viewModel: StudentKitViewModel,
+    initialTool: ComprehensivePdfTool = ComprehensivePdfTool.NONE
+) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
 
-    var activeTool by remember { mutableStateOf(ComprehensivePdfTool.NONE) }
+    var activeTool by remember(initialTool) { mutableStateOf(initialTool) }
     var selectedCategoryFilter by remember { mutableStateOf("All") }
 
     // Multi-file state for Merge
@@ -121,7 +131,7 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
     var splitSelectedMode by remember { mutableStateOf("All Pages") } // All Pages, Odd Pages, Even Pages, Custom Range
 
     var compressQualityPreset by remember { mutableIntStateOf(60) } // 40, 60, 80
-    var compressMaxDimension by remember { mutableIntStateOf(1440) } // 1024, 1440, 1920
+    var compressMaxDimension by remember { mutableIntStateOf(1280) } // 960, 1280, 1440
 
     var watermarkText by remember { mutableStateOf("CONFIDENTIAL") }
     var watermarkColor by remember { mutableStateOf(Color(0xFFE53935)) }
@@ -154,6 +164,14 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
     var metadataSubject by remember { mutableStateOf("") }
     var metadataKeywords by remember { mutableStateOf("") }
 
+    // PDF to Word Configurations
+    var wordConversionMode by remember { mutableStateOf(PdfToWordConverter.ConversionMode.SMART_HYBRID) }
+    var wordDetectTables by remember { mutableStateOf(true) }
+    var wordPreservePageBreaks by remember { mutableStateOf(true) }
+    var wordIncludeHeader by remember { mutableStateOf(false) }
+    var wordPageRangeMode by remember { mutableStateOf("All Pages") }
+    var wordPageRangeText by remember { mutableStateOf("1") }
+
     // Page preview navigation state
     var previewPageIndex by remember { mutableIntStateOf(0) }
     var currentPreviewPageBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -163,6 +181,10 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
     var processingProgress by remember { mutableFloatStateOf(0f) }
     var processingStatusText by remember { mutableStateOf("") }
     var completedOutputUri by remember { mutableStateOf<Uri?>(null) }
+    var completedOutputMimeType by remember { mutableStateOf("application/pdf") }
+    var completedOpenButtonLabel by remember { mutableStateOf("Open PDF") }
+    var completedShareTitle by remember { mutableStateOf("Share PDF") }
+    var extractedWordPreviewText by remember { mutableStateOf("") }
     var extractedImagesList by remember { mutableStateOf<List<Bitmap>?>(null) }
     var isProcessFinished by remember { mutableStateOf(false) }
 
@@ -177,6 +199,7 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
                 previewPageIndex = 0
                 if (item.pageCount > 0) {
                     splitPageRangeText = "1-${item.pageCount}"
+                    wordPageRangeText = "1-${item.pageCount}"
                 }
                 
                 // Extract existing metadata
@@ -815,14 +838,26 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
                                 ComprehensivePdfTool.COMPRESS -> {
                                     Text("Compression Quality Presets:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        listOf(40 to "Heavy (Smallest)", 60 to "Balanced (Standard)", 80 to "Light (High Quality)").forEach { (q, lbl) ->
+                                        listOf(
+                                            Triple(40, 960, "Heavy (Smallest)"),
+                                            Triple(60, 1280, "Balanced (Standard)"),
+                                            Triple(80, 1440, "Light (High Quality)")
+                                        ).forEach { (q, maxDim, lbl) ->
                                             FilterChip(
                                                 selected = compressQualityPreset == q,
-                                                onClick = { compressQualityPreset = q },
+                                                onClick = {
+                                                    compressQualityPreset = q
+                                                    compressMaxDimension = maxDim
+                                                },
                                                 label = { Text(lbl, fontSize = 11.sp) }
                                             )
                                         }
                                     }
+                                    Text(
+                                        text = "JPEG stream compression (${compressMaxDimension}px max edge, Q$compressQualityPreset%). Never exceeds original size.",
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
                                 }
 
                                 ComprehensivePdfTool.WATERMARK -> {
@@ -870,6 +905,119 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
                                     }
                                 }
 
+                                ComprehensivePdfTool.PDF_TO_WORD -> {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Description,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Column {
+                                                Text(
+                                                    "Hybrid Digital + Layout OCR Word (.docx) Engine",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Text(
+                                                    "Extracts headings, paragraphs, lists & multi-column tables from any digital or scanned PDF into an editable .docx file.",
+                                                    fontSize = 10.5.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Text("Conversion Mode:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        PdfToWordConverter.ConversionMode.values().forEach { mode ->
+                                            Card(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { wordConversionMode = mode },
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = if (wordConversionMode == mode) {
+                                                        MaterialTheme.colorScheme.primaryContainer
+                                                    } else {
+                                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                                    }
+                                                ),
+                                                shape = RoundedCornerShape(10.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    RadioButton(
+                                                        selected = wordConversionMode == mode,
+                                                        onClick = { wordConversionMode = mode }
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Column {
+                                                        Text(mode.label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                        Text(mode.subtitle, fontSize = 11.sp, color = Color.Gray)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Text("Pages to Convert:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        listOf("All Pages", "Custom Range").forEach { rMode ->
+                                            FilterChip(
+                                                selected = wordPageRangeMode == rMode,
+                                                onClick = { wordPageRangeMode = rMode },
+                                                label = { Text(rMode, fontSize = 11.sp) }
+                                            )
+                                        }
+                                    }
+                                    if (wordPageRangeMode == "Custom Range") {
+                                        OutlinedTextField(
+                                            value = wordPageRangeText,
+                                            onValueChange = { wordPageRangeText = it },
+                                            label = { Text("Page Range (e.g. 1-4, 7)") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Auto-detect Multi-Column Tables", fontSize = 12.sp)
+                                        Switch(checked = wordDetectTables, onCheckedChange = { wordDetectTables = it })
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Preserve Page Breaks in Word", fontSize = 12.sp)
+                                        Switch(checked = wordPreservePageBreaks, onCheckedChange = { wordPreservePageBreaks = it })
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Add Document Title Banner", fontSize = 12.sp)
+                                        Switch(checked = wordIncludeHeader, onCheckedChange = { wordIncludeHeader = it })
+                                    }
+                                }
+
                                 else -> {}
                             }
 
@@ -884,6 +1032,10 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
                                     processingProgress = 0.05f
                                     processingStatusText = "Initializing ${activeTool.title}..."
                                     completedOutputUri = null
+                                    completedOutputMimeType = "application/pdf"
+                                    completedOpenButtonLabel = "Open PDF"
+                                    completedShareTitle = "Share PDF"
+                                    extractedWordPreviewText = ""
                                     extractedImagesList = null
 
                                     coroutineScope.launch {
@@ -1066,6 +1218,7 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
                                             }
 
                                             ComprehensivePdfTool.COMPRESS -> {
+                                                var compressSummaryText = "Compressed PDF saved to Downloads!"
                                                 processComprehensiveCompressPdf(
                                                     context = context,
                                                     fileItem = targetFile,
@@ -1075,11 +1228,14 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
                                                         processingProgress = prog
                                                         processingStatusText = status
                                                     },
+                                                    onResultSummary = { summary ->
+                                                        compressSummaryText = summary
+                                                    },
                                                     onComplete = { uri ->
                                                         completedOutputUri = uri
                                                         isProcessFinished = true
                                                         processingProgress = 1.0f
-                                                        processingStatusText = if (uri != null) "Compressed PDF saved to Downloads!" else "Failed to compress."
+                                                        processingStatusText = if (uri != null) compressSummaryText else "Failed to compress."
                                                     }
                                                 )
                                             }
@@ -1141,6 +1297,61 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
                                                         processingStatusText = if (!list.isNullOrEmpty()) "Extracted ${list.size} images to Pictures/PDF_Images!" else "Failed to extract."
                                                     }
                                                 )
+                                            }
+
+                                            ComprehensivePdfTool.PDF_TO_WORD -> {
+                                                val total = targetFile.pageCount
+                                                val selectedSet: Set<Int>? = if (wordPageRangeMode == "Custom Range") {
+                                                    val set = mutableSetOf<Int>()
+                                                    wordPageRangeText.split(",").forEach { part ->
+                                                        val trimmed = part.trim()
+                                                        if (trimmed.contains("-")) {
+                                                            val bounds = trimmed.split("-")
+                                                            val s = bounds.getOrNull(0)?.toIntOrNull() ?: 1
+                                                            val e = bounds.getOrNull(1)?.toIntOrNull() ?: total
+                                                            for (p in s..e) if (p in 1..total) set.add(p)
+                                                        } else {
+                                                            val p = trimmed.toIntOrNull()
+                                                            if (p != null && p in 1..total) set.add(p)
+                                                        }
+                                                    }
+                                                    set.ifEmpty { null }
+                                                } else {
+                                                    null
+                                                }
+
+                                                val convResult = withContext(Dispatchers.IO) {
+                                                    PdfToWordConverter.convertPdfToDocx(
+                                                        context = context,
+                                                        sourceUri = targetFile.uri,
+                                                        documentTitle = targetFile.name,
+                                                        mode = wordConversionMode,
+                                                        detectTables = wordDetectTables,
+                                                        preservePageBreaks = wordPreservePageBreaks,
+                                                        includeHeaderBanner = wordIncludeHeader,
+                                                        selectedPageNumbers = selectedSet,
+                                                        onProgress = { prog, status ->
+                                                            coroutineScope.launch {
+                                                                processingProgress = prog
+                                                                processingStatusText = status
+                                                            }
+                                                        }
+                                                    )
+                                                }
+
+                                                if (convResult != null) {
+                                                    completedOutputUri = convResult.docxUri
+                                                    completedOutputMimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                                    completedOpenButtonLabel = "Open Word (.docx)"
+                                                    completedShareTitle = "Share Word (.docx)"
+                                                    extractedWordPreviewText = convResult.previewText
+                                                    processingProgress = 1.0f
+                                                    processingStatusText = "Saved ${convResult.fileName} to Downloads\n${convResult.pagesConverted} pages • ${convResult.totalWords} words • ${convResult.headingsCount} headings • ${convResult.tablesCount} tables"
+                                                } else {
+                                                    completedOutputUri = null
+                                                    processingStatusText = "Failed to convert PDF to Word (.docx). Make sure the PDF is readable and unlocked."
+                                                }
+                                                isProcessFinished = true
                                             }
 
                                             else -> {}
@@ -1221,6 +1432,55 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
                     )
 
                     if (isProcessFinished) {
+                        if (extractedWordPreviewText.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            "Extracted Word Preview",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        TextButton(
+                                            onClick = {
+                                                clipboardManager.setText(AnnotatedString(extractedWordPreviewText))
+                                                Toast.makeText(context, "Copied extracted text to clipboard", Toast.LENGTH_SHORT).show()
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                            modifier = Modifier.height(26.dp)
+                                        ) {
+                                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(13.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Copy Text", fontSize = 10.sp)
+                                        }
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 140.dp)
+                                            .verticalScroll(rememberScrollState())
+                                    ) {
+                                        Text(
+                                            text = extractedWordPreviewText,
+                                            fontSize = 10.5.sp,
+                                            lineHeight = 14.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1229,13 +1489,18 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
                                 Button(
                                     onClick = {
                                         val intent = Intent(Intent.ACTION_VIEW).apply {
-                                            setDataAndType(completedOutputUri, "application/pdf")
+                                            setDataAndType(completedOutputUri, completedOutputMimeType)
                                             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                                         }
                                         try {
                                             context.startActivity(intent)
                                         } catch (e: Exception) {
-                                            Toast.makeText(context, "No PDF viewer app found.", Toast.LENGTH_SHORT).show()
+                                            val fallbackMsg = if (completedOutputMimeType.contains("wordprocessingml")) {
+                                                "Saved in Downloads. Install Word / Google Docs / WPS Office to open .docx directly."
+                                            } else {
+                                                "No PDF viewer app found."
+                                            }
+                                            Toast.makeText(context, fallbackMsg, Toast.LENGTH_LONG).show()
                                         }
                                     },
                                     modifier = Modifier.weight(1f),
@@ -1243,17 +1508,17 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
                                 ) {
                                     Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Open PDF", fontSize = 12.sp)
+                                    Text(completedOpenButtonLabel, fontSize = 12.sp, maxLines = 1)
                                 }
 
                                 OutlinedButton(
                                     onClick = {
                                         val intent = Intent(Intent.ACTION_SEND).apply {
-                                            type = "application/pdf"
+                                            type = completedOutputMimeType
                                             putExtra(Intent.EXTRA_STREAM, completedOutputUri)
                                             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                                         }
-                                        context.startActivity(Intent.createChooser(intent, "Share PDF"))
+                                        context.startActivity(Intent.createChooser(intent, completedShareTitle))
                                     },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(10.dp)
@@ -1270,6 +1535,15 @@ fun EnhancedPdfToolsScreen(viewModel: StudentKitViewModel) {
                                 ) {
                                     Text("Close")
                                 }
+                            }
+                        }
+
+                        if (completedOutputUri != null) {
+                            TextButton(
+                                onClick = { isProcessingModalVisible = false },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Done", fontSize = 12.sp)
                             }
                         }
                     }
@@ -1624,6 +1898,30 @@ fun saveComprehensivePdfBytes(context: Context, bytes: ByteArray, fileName: Stri
     val uri = resolver.insert(collectionUri, contentValues) ?: return null
     resolver.openOutputStream(uri)?.use { os ->
         os.write(bytes)
+        os.flush()
+    }
+    return uri
+}
+
+fun saveComprehensivePdfFile(context: Context, sourceFile: File, fileName: String): Uri? {
+    val resolver = context.contentResolver
+    val contentValues = ContentValues().apply {
+        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+        put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+        }
+    }
+    val collectionUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        MediaStore.Downloads.EXTERNAL_CONTENT_URI
+    } else {
+        MediaStore.Files.getContentUri("external")
+    }
+    val uri = resolver.insert(collectionUri, contentValues) ?: return null
+    resolver.openOutputStream(uri)?.use { os ->
+        FileInputStream(sourceFile).use { input ->
+            input.copyTo(os, 65536)
+        }
         os.flush()
     }
     return uri
@@ -2244,47 +2542,49 @@ suspend fun processComprehensiveCompressPdf(
     qualityPercent: Int,
     maxDimension: Int,
     onProgress: (Float, String) -> Unit,
+    onResultSummary: (String) -> Unit = {},
     onComplete: (Uri?) -> Unit
 ) = withContext(Dispatchers.IO) {
+    var tempFile: File? = null
     try {
-        onProgress(0.05f, "Preparing PDF compression...")
-        val pdfDoc = PdfDocument()
-        val pfd = context.contentResolver.openFileDescriptor(fileItem.uri, "r") ?: return@withContext onComplete(null)
-        val renderer = PdfRenderer(pfd)
-        val totalPages = renderer.pageCount.coerceAtLeast(1)
-
-        for (i in 0 until totalPages) {
-            val prog = 0.10f + ((i + 1).toFloat() / totalPages.toFloat()) * 0.78f
-            onProgress(prog, "Compressing page ${i + 1} of $totalPages (Q: $qualityPercent%)...")
-
-            val page = renderer.openPage(i)
-            val aspect = page.width.toFloat() / page.height.toFloat().coerceAtLeast(1f)
-            val targetW = if (aspect >= 1f) maxDimension else (maxDimension * aspect).toInt().coerceAtLeast(100)
-            val targetH = if (aspect >= 1f) (maxDimension / aspect).toInt().coerceAtLeast(100) else maxDimension
-
-            val bmp = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bmp)
-            canvas.drawColor(android.graphics.Color.WHITE)
-            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            page.close()
-
-            val pageInfo = PdfDocument.PageInfo.Builder(page.width, page.height, i + 1).create()
-            val docPage = pdfDoc.startPage(pageInfo)
-            val docCanvas = docPage.canvas
-            docCanvas.drawBitmap(bmp, Rect(0, 0, bmp.width, bmp.height), RectF(0f, 0f, page.width.toFloat(), page.height.toFloat()), Paint(Paint.FILTER_BITMAP_FLAG))
-            pdfDoc.finishPage(docPage)
-            bmp.recycle()
+        onProgress(0.05f, "Preparing JPEG stream PDF compression...")
+        val result = StandardPdfCompressor.compressPdfToTempFile(
+            context = context,
+            sourceUri = fileItem.uri,
+            knownOriginalBytes = fileItem.sizeBytes,
+            qualityPercent = qualityPercent,
+            maxDimension = maxDimension,
+            onProgress = onProgress
+        )
+        if (result == null) {
+            onComplete(null)
+            return@withContext
         }
-        renderer.close()
-        pfd.close()
+        tempFile = result.tempFile
 
-        onProgress(0.92f, "Saving compressed PDF...")
-        val resultUri = saveComprehensivePdfDocument(context, pdfDoc, "Compressed_${System.currentTimeMillis()}.pdf")
-        pdfDoc.close()
+        onProgress(0.92f, "Saving compressed PDF to Downloads...")
+        val resultUri = saveComprehensivePdfFile(
+            context = context,
+            sourceFile = result.tempFile,
+            fileName = "Compressed_${System.currentTimeMillis()}.pdf"
+        )
+
+        val origStr = StandardPdfCompressor.formatByteSize(result.originalBytes)
+        val outStr = StandardPdfCompressor.formatByteSize(result.compressedBytes)
+        val summary = if (result.keptOriginal) {
+            "Already compact ($origStr). Kept original PDF to prevent size increase."
+        } else {
+            "Compressed PDF saved to Downloads!\n$origStr \u2192 $outStr (Saved ${result.savedPercent}%)"
+        }
+        onResultSummary(summary)
         onComplete(resultUri)
     } catch (e: Exception) {
         e.printStackTrace()
         onComplete(null)
+    } finally {
+        try {
+            tempFile?.delete()
+        } catch (_: Exception) {}
     }
 }
 

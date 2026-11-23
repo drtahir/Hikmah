@@ -864,6 +864,7 @@ fun PinVaultScreen(viewModel: StudentKitViewModel) {
             // VAULT MAIN CONTENT LIST VIEW
             // ==========================================
             Scaffold(
+                contentWindowInsets = WindowInsets(0.dp),
                 containerColor = Color(0xFF0A0F1E),
                 topBar = {
                     Row(
@@ -2395,6 +2396,7 @@ fun CalculatorVaultScreen(viewModel: StudentKitViewModel) {
             }
 
             Scaffold(
+                contentWindowInsets = WindowInsets(0.dp),
                 containerColor = Color(0xFF0A0F1E),
                 topBar = {
                     Row(
@@ -2477,6 +2479,7 @@ fun CalculatorVaultScreen(viewModel: StudentKitViewModel) {
                 },
                 bottomBar = {
                     NavigationBar(
+                        windowInsets = WindowInsets(0.dp),
                         containerColor = Color(0xFF131B30),
                         tonalElevation = 8.dp
                     ) {
@@ -3487,12 +3490,12 @@ fun PhotoVaultScreen(viewModel: StudentKitViewModel) {
             // VAULT UNLOCKED STAGE (MAIN DASHBOARD)
             // ==========================================
             Scaffold(
+                contentWindowInsets = WindowInsets(0.dp),
                 containerColor = Color(0xFF0A0F1E),
                 topBar = {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .statusBarsPadding()
                             .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -4065,12 +4068,12 @@ fun PrivateNotesScreen(viewModel: StudentKitViewModel) {
             }
         } else {
             Scaffold(
+                contentWindowInsets = WindowInsets(0.dp),
                 containerColor = Color(0xFF0A0F1E),
                 topBar = {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .statusBarsPadding()
                             .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -4283,7 +4286,6 @@ fun PrivateNotesScreen(viewModel: StudentKitViewModel) {
             modifier = Modifier
                 .fillMaxSize()
                 .background(editorBg)
-                .statusBarsPadding()
         ) {
             // Header Row
             Row(
@@ -4699,7 +4701,6 @@ fun SecureDeleteScreen(viewModel: StudentKitViewModel) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
                 .padding(16.dp)
         ) {
             // Header Row
@@ -5996,13 +5997,16 @@ fun WifiScannerScreen(viewModel: StudentKitViewModel) {
 
     // Main Scaffold Layout
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
+                windowInsets = WindowInsets(0.dp),
                 title = {
                     Text(
                         text = "WiFi Monitor & Scanner",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
+                        fontSize = 18.sp,
+                        maxLines = 1,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 },
@@ -6015,10 +6019,56 @@ fun WifiScannerScreen(viewModel: StudentKitViewModel) {
                         )
                     }
                 },
+                actions = {
+                    IconButton(onClick = { viewModel.navigateTo(Screen.Dashboard) }) {
+                        Icon(
+                            imageVector = Icons.Default.Home,
+                            contentDescription = "Home",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
             )
+        },
+        bottomBar = {
+            NavigationBar(
+                windowInsets = WindowInsets(0.dp),
+                tonalElevation = 4.dp
+            ) {
+                NavigationBarItem(
+                    selected = false,
+                    onClick = { viewModel.navigateTo(Screen.SecurityHub) },
+                    icon = { Icon(Icons.Default.Shield, contentDescription = "Shield") },
+                    label = { Text("Shield", fontSize = 10.sp, maxLines = 1) }
+                )
+                NavigationBarItem(
+                    selected = true,
+                    onClick = { },
+                    icon = { Icon(Icons.Default.WifiTethering, contentDescription = "WiFi Audit") },
+                    label = { Text("WiFi Audit", fontSize = 10.sp, maxLines = 1) }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = { viewModel.navigateTo(Screen.AppLock) },
+                    icon = { Icon(Icons.Default.Lock, contentDescription = "App Lock") },
+                    label = { Text("App Lock", fontSize = 10.sp, maxLines = 1) }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = { viewModel.navigateTo(Screen.PinVault) },
+                    icon = { Icon(Icons.Default.Pin, contentDescription = "PIN Vault") },
+                    label = { Text("PIN Vault", fontSize = 10.sp, maxLines = 1) }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = { viewModel.navigateTo(Screen.PermissionAuditor) },
+                    icon = { Icon(Icons.Default.Policy, contentDescription = "Audit") },
+                    label = { Text("Audit", fontSize = 10.sp, maxLines = 1) }
+                )
+            }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->

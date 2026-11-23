@@ -91,9 +91,13 @@ fun FinanceHubScreen(
         }
     }
 
+    val currentScreen by viewModel.currentScreen.collectAsState()
+
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
+                windowInsets = WindowInsets(0.dp),
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp)
@@ -134,6 +138,45 @@ fun FinanceHubScreen(
                     }
                 }
             )
+        },
+        bottomBar = {
+            if (isFinanceUnlocked) {
+                NavigationBar(
+                    windowInsets = WindowInsets(0.dp),
+                    tonalElevation = 4.dp
+                ) {
+                    NavigationBarItem(
+                        selected = currentScreen is Screen.ExpenseTracker,
+                        onClick = { viewModel.navigateTo(Screen.ExpenseTracker) },
+                        icon = { Icon(Icons.Default.TrendingDown, contentDescription = "Expenses") },
+                        label = { Text("Expenses", fontSize = 10.sp, maxLines = 1) }
+                    )
+                    NavigationBarItem(
+                        selected = currentScreen is Screen.IncomeTracker,
+                        onClick = { viewModel.navigateTo(Screen.IncomeTracker) },
+                        icon = { Icon(Icons.Default.TrendingUp, contentDescription = "Income") },
+                        label = { Text("Income", fontSize = 10.sp, maxLines = 1) }
+                    )
+                    NavigationBarItem(
+                        selected = currentScreen is Screen.UtilityBills,
+                        onClick = { viewModel.navigateTo(Screen.UtilityBills) },
+                        icon = { Icon(Icons.Default.ReceiptLong, contentDescription = "Bills") },
+                        label = { Text("Bills", fontSize = 10.sp, maxLines = 1) }
+                    )
+                    NavigationBarItem(
+                        selected = currentScreen is Screen.ZakatCalculator,
+                        onClick = { viewModel.navigateTo(Screen.ZakatCalculator) },
+                        icon = { Icon(Icons.Default.AccountBalance, contentDescription = "Zakat") },
+                        label = { Text("Zakat", fontSize = 10.sp, maxLines = 1) }
+                    )
+                    NavigationBarItem(
+                        selected = currentScreen is Screen.FinanceReportAndBackup,
+                        onClick = { viewModel.navigateTo(Screen.FinanceReportAndBackup) },
+                        icon = { Icon(Icons.Default.Assessment, contentDescription = "Ledger") },
+                        label = { Text("Ledger", fontSize = 10.sp, maxLines = 1) }
+                    )
+                }
+            }
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
@@ -308,6 +351,7 @@ fun ExpenseTrackerScreen(viewModel: StudentKitViewModel) {
     val totalAmt = filteredExpenses.sumOf { it.amount }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showAddDialog = true },
@@ -543,6 +587,7 @@ fun IncomeTrackerScreen(viewModel: StudentKitViewModel) {
     val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showAddDialog = true },
@@ -772,6 +817,7 @@ fun UtilityBillsScreen(viewModel: StudentKitViewModel) {
     val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showAddDialog = true },
@@ -1186,6 +1232,7 @@ fun BcCommitteeScreen(viewModel: StudentKitViewModel) {
     val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showCreateDialog = true },
@@ -2029,6 +2076,7 @@ fun LoanTrackerScreen(viewModel: StudentKitViewModel) {
     val totalOwed = owedList.filter { it.isSettled == 0 }.sumOf { it.amount }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showAddDialog = true },
@@ -2234,6 +2282,7 @@ fun SavingsGoalsScreen(viewModel: StudentKitViewModel) {
     var depositAmountText by remember { mutableStateOf("") }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showAddDialog = true },

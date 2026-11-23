@@ -109,10 +109,31 @@ fun ToolsHubScreen(
     title: String,
     subScreen: @Composable () -> Unit
 ) {
+    val currentScreen by viewModel.currentScreen.collectAsState()
+
+    val toolGroup = remember(currentScreen) {
+        when (currentScreen) {
+            is Screen.SecurityHub, is Screen.PinVault, is Screen.AppLock, is Screen.CalculatorVault,
+            is Screen.PhotoVault, is Screen.PrivateNotes, is Screen.SecureDelete, is Screen.PermissionAuditor,
+            is Screen.WifiScanner, is Screen.UssdCheck, is Screen.ThermalPrinterManager,
+            is Screen.BiometricManagerScreen, is Screen.IntruderGuard, is Screen.FileEncryptor,
+            is Screen.HiddenLocker, is Screen.Steganography, is Screen.Steganalysis -> "SECURITY"
+
+            is Screen.Notes, is Screen.StudyTimer, is Screen.Timetable, is Screen.BmiCalculator,
+            is Screen.GpaCalculator, is Screen.IvCalculator, is Screen.DosageCalculator,
+            is Screen.GfrCalculator, is Screen.ClinicalScores, is Screen.AnatomyAtlas, is Screen.PharmacyExam,
+            is Screen.NursingExam, is Screen.HajjMedicalPrep, is Screen.MoavineenHujjajPrep -> "STUDY"
+
+            else -> "UTILITIES"
+        }
+    }
+
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
-                title = { Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                windowInsets = WindowInsets(0.dp),
+                title = { Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = { viewModel.navigateBack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -124,6 +145,113 @@ fun ToolsHubScreen(
                     }
                 }
             )
+        },
+        bottomBar = {
+            if (currentScreen !is Screen.CalculatorVault) {
+                NavigationBar(
+                    windowInsets = WindowInsets(0.dp),
+                    tonalElevation = 4.dp
+                ) {
+                    when (toolGroup) {
+                        "SECURITY" -> {
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.SecurityHub,
+                                onClick = { viewModel.navigateTo(Screen.SecurityHub) },
+                                icon = { Icon(Icons.Default.Shield, contentDescription = "Shield") },
+                                label = { Text("Shield", fontSize = 10.sp, maxLines = 1) }
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.AppLock,
+                                onClick = { viewModel.navigateTo(Screen.AppLock) },
+                                icon = { Icon(Icons.Default.Lock, contentDescription = "App Lock") },
+                                label = { Text("App Lock", fontSize = 10.sp, maxLines = 1) }
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.PinVault,
+                                onClick = { viewModel.navigateTo(Screen.PinVault) },
+                                icon = { Icon(Icons.Default.Pin, contentDescription = "PIN Vault") },
+                                label = { Text("PIN Vault", fontSize = 10.sp, maxLines = 1) }
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.PhotoVault,
+                                onClick = { viewModel.navigateTo(Screen.PhotoVault) },
+                                icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = "Media Vault") },
+                                label = { Text("Media", fontSize = 10.sp, maxLines = 1) }
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.PermissionAuditor,
+                                onClick = { viewModel.navigateTo(Screen.PermissionAuditor) },
+                                icon = { Icon(Icons.Default.Policy, contentDescription = "Audit") },
+                                label = { Text("Audit", fontSize = 10.sp, maxLines = 1) }
+                            )
+                        }
+                        "STUDY" -> {
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.Notes,
+                                onClick = { viewModel.navigateTo(Screen.Notes) },
+                                icon = { Icon(Icons.Default.Book, contentDescription = "Notes") },
+                                label = { Text("Notes", fontSize = 10.sp, maxLines = 1) }
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.StudyTimer,
+                                onClick = { viewModel.navigateTo(Screen.StudyTimer) },
+                                icon = { Icon(Icons.Default.Timer, contentDescription = "Timer") },
+                                label = { Text("Timer", fontSize = 10.sp, maxLines = 1) }
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.Timetable,
+                                onClick = { viewModel.navigateTo(Screen.Timetable) },
+                                icon = { Icon(Icons.Default.Schedule, contentDescription = "Agenda") },
+                                label = { Text("Agenda", fontSize = 10.sp, maxLines = 1) }
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.DosageCalculator,
+                                onClick = { viewModel.navigateTo(Screen.DosageCalculator) },
+                                icon = { Icon(Icons.Default.MedicalServices, contentDescription = "Dosage") },
+                                label = { Text("Dosage", fontSize = 10.sp, maxLines = 1) }
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.AnatomyAtlas,
+                                onClick = { viewModel.navigateTo(Screen.AnatomyAtlas) },
+                                icon = { Icon(Icons.Default.AccessibilityNew, contentDescription = "Anatomy") },
+                                label = { Text("Anatomy", fontSize = 10.sp, maxLines = 1) }
+                            )
+                        }
+                        else -> {
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.Calculator,
+                                onClick = { viewModel.navigateTo(Screen.Calculator) },
+                                icon = { Icon(Icons.Default.Calculate, contentDescription = "Calc") },
+                                label = { Text("Calc", fontSize = 10.sp, maxLines = 1) }
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.UnitConverter,
+                                onClick = { viewModel.navigateTo(Screen.UnitConverter) },
+                                icon = { Icon(Icons.Default.SwapVert, contentDescription = "Convert") },
+                                label = { Text("Convert", fontSize = 10.sp, maxLines = 1) }
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.QrGenerator,
+                                onClick = { viewModel.navigateTo(Screen.QrGenerator) },
+                                icon = { Icon(Icons.Default.QrCode, contentDescription = "QR Studio") },
+                                label = { Text("QR Studio", fontSize = 10.sp, maxLines = 1) }
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.ImageTools,
+                                onClick = { viewModel.navigateTo(Screen.ImageTools) },
+                                icon = { Icon(Icons.Default.AddPhotoAlternate, contentDescription = "Img Tools") },
+                                label = { Text("Img Tools", fontSize = 10.sp, maxLines = 1) }
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen is Screen.PasswordManager,
+                                onClick = { viewModel.navigateTo(Screen.PasswordManager) },
+                                icon = { Icon(Icons.Default.Lock, contentDescription = "Passwords") },
+                                label = { Text("Vault", fontSize = 10.sp, maxLines = 1) }
+                            )
+                        }
+                    }
+                }
+            }
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
@@ -8058,6 +8186,7 @@ fun PasswordManagerScreen(viewModel: StudentKitViewModel) {
         }
     } else {
         Scaffold(
+            contentWindowInsets = WindowInsets(0.dp),
             floatingActionButton = {
                 FloatingActionButton(onClick = { showCreateDialog = true }) {
                     Icon(Icons.Default.Add, null)
@@ -9343,6 +9472,7 @@ fun StudyNotesScreen(viewModel: StudentKitViewModel) {
     var showAddDialog by remember { mutableStateOf(false) }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddDialog = true }) {
                 Icon(Icons.Default.Add, null)
@@ -9573,6 +9703,7 @@ fun TimetableScreen(viewModel: StudentKitViewModel) {
     val filteredClasses = timetableList.filter { it.dayOfWeek == selectedDayNum }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         floatingActionButton = {
             FloatingActionButton(onClick = { showCreateDialog = true }) {
                 Icon(Icons.Default.Add, null)

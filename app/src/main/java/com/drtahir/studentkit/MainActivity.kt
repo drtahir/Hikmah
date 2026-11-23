@@ -68,15 +68,15 @@ fun MainAppContainer(viewModel: StudentKitViewModel) {
             is Screen.LoanTracker, is Screen.SavingsGoals, is Screen.FinanceReportAndBackup -> 1
             is Screen.CvBuilder, is Screen.ImageToPdf, is Screen.ImageToXls, is Screen.ImageToWord,
             is Screen.DocumentScanner, is Screen.IdCardScanner, is Screen.PassportScanner,
-            is Screen.PdfTools, is Screen.InvoiceGenerator, is Screen.HospitalClerkAdmin, is Screen.SignaturePad, is Screen.DutyRotaCreator -> 2
+            is Screen.PdfTools, is Screen.PdfToWord, is Screen.PdfSignRedact, is Screen.InvoiceGenerator, is Screen.HospitalClerkAdmin, is Screen.SignaturePad, is Screen.DutyRotaCreator -> 2
             is Screen.Calculator, is Screen.UnitConverter, is Screen.QrGenerator, is Screen.BarcodeGenerator,
             is Screen.QrScanner, is Screen.PasswordManager,
-            is Screen.ImageTools, is Screen.AgeCalculator, is Screen.IntruderGuard, is Screen.WatermarkStudio, is Screen.BackgroundEraser,
+            is Screen.ImageTools, is Screen.VideoAudioStudio, is Screen.AgeCalculator, is Screen.IntruderGuard, is Screen.WatermarkStudio, is Screen.BackgroundEraser,
             is Screen.FileEncryptor, is Screen.HiddenLocker, is Screen.Steganography, is Screen.Steganalysis, is Screen.ImageEnhancer, is Screen.Teleprompter -> 3
             is Screen.Notes, is Screen.StudyTimer, is Screen.Timetable, is Screen.BmiCalculator,
             is Screen.GpaCalculator, is Screen.IvCalculator, is Screen.DosageCalculator,
-            is Screen.GfrCalculator, is Screen.AnatomyAtlas, is Screen.PharmacyExam, is Screen.NursingExam, is Screen.HajjMedicalPrep, is Screen.MoavineenHujjajPrep,
-            is Screen.IslamicHub -> 4
+            is Screen.GfrCalculator, is Screen.ClinicalScores, is Screen.AnatomyAtlas, is Screen.PharmacyExam, is Screen.NursingExam, is Screen.HajjMedicalPrep, is Screen.MoavineenHujjajPrep,
+            is Screen.IslamicHub, is Screen.IslamicDaily -> 4
             is Screen.SecurityHub, is Screen.PinVault, is Screen.AppLock, is Screen.CalculatorVault,
             is Screen.PhotoVault, is Screen.PrivateNotes, is Screen.SecureDelete, is Screen.PermissionAuditor,
             is Screen.WifiScanner, is Screen.UssdCheck, is Screen.ThermalPrinterManager, is Screen.BiometricManagerScreen -> 5
@@ -101,7 +101,7 @@ fun MainAppContainer(viewModel: StudentKitViewModel) {
     } else {
         Scaffold(
             bottomBar = {
-                if (currentScreen != Screen.IslamicHub && currentScreen != Screen.Splash && currentScreen != Screen.DutyRotaCreator) {
+                if (currentScreen == Screen.Dashboard) {
                     NavigationBar(
                         modifier = Modifier.testTag("bottom_nav_bar")
                     ) {
@@ -246,7 +246,13 @@ fun MainAppContainer(viewModel: StudentKitViewModel) {
                     is Screen.PdfTools -> DocumentHubScreen(viewModel = viewModel, title = "Comprehensive PDF Tool Suite") {
                         EnhancedPdfToolsScreen(viewModel = viewModel)
                     }
-                    is Screen.InvoiceGenerator -> DocumentHubScreen(viewModel = viewModel, title = "OmniPOS Invoice Suite") {
+                    is Screen.PdfToWord -> DocumentHubScreen(viewModel = viewModel, title = "PDF to Editable Word (.docx)") {
+                        EnhancedPdfToolsScreen(viewModel = viewModel, initialTool = ComprehensivePdfTool.PDF_TO_WORD)
+                    }
+                    is Screen.PdfSignRedact -> DocumentHubScreen(viewModel = viewModel, title = "PDF Sign, Redact & Word→PDF") {
+                        PdfSignRedactScreen(viewModel = viewModel)
+                    }
+                    is Screen.InvoiceGenerator -> {
                         InvoiceGeneratorScreen(viewModel = viewModel)
                     }
                     is Screen.HospitalClerkAdmin -> DocumentHubScreen(viewModel = viewModel, title = "Health Dept & Hospital Clerical Kit") {
@@ -280,6 +286,9 @@ fun MainAppContainer(viewModel: StudentKitViewModel) {
                     }
                     is Screen.ImageTools -> ToolsHubScreen(viewModel = viewModel, title = "Image Compressor & Tools") {
                         ImageToolsScreen(viewModel = viewModel)
+                    }
+                    is Screen.VideoAudioStudio -> ToolsHubScreen(viewModel = viewModel, title = "Video & Audio Studio") {
+                        VideoAudioStudioScreen(viewModel = viewModel)
                     }
                     is Screen.IntruderGuard -> ToolsHubScreen(viewModel = viewModel, title = "Intruder Guard & Alarm") {
                         IntruderGuardScreen(viewModel = viewModel)
@@ -334,6 +343,9 @@ fun MainAppContainer(viewModel: StudentKitViewModel) {
                     is Screen.GfrCalculator -> ToolsHubScreen(viewModel = viewModel, title = "Renal Clearance GFR Solver") {
                         GfrCalculatorScreen(viewModel = viewModel)
                     }
+                    is Screen.ClinicalScores -> ToolsHubScreen(viewModel = viewModel, title = "Bedside Clinical & ABG Scores") {
+                        ClinicalScoresScreen(viewModel = viewModel)
+                    }
                     is Screen.AnatomyAtlas -> ToolsHubScreen(viewModel = viewModel, title = "Human Anatomy Atlas") {
                         AnatomyAtlasScreen(viewModel = viewModel)
                     }
@@ -351,6 +363,9 @@ fun MainAppContainer(viewModel: StudentKitViewModel) {
                     }
                     is Screen.IslamicHub -> {
                         IslamicHubScreen(viewModel = viewModel)
+                    }
+                    is Screen.IslamicDaily -> {
+                        IslamicDailyScreen(viewModel = viewModel)
                     }
                     is Screen.AgeCalculator -> ToolsHubScreen(viewModel = viewModel, title = "Age Calculator") {
                         AgeCalculatorScreen(viewModel = viewModel)
@@ -381,7 +396,7 @@ fun MainAppContainer(viewModel: StudentKitViewModel) {
                     is Screen.PermissionAuditor -> ToolsHubScreen(viewModel = viewModel, title = "App Permission Auditor") {
                         PermissionAuditorScreen(viewModel = viewModel)
                     }
-                    is Screen.WifiScanner -> ToolsHubScreen(viewModel = viewModel, title = "Wi-Fi Security Inspector") {
+                    is Screen.WifiScanner -> {
                         WifiScannerScreen(viewModel = viewModel)
                     }
                     is Screen.UssdCheck -> ToolsHubScreen(viewModel = viewModel, title = "USSD Security Auditor") {
@@ -393,10 +408,10 @@ fun MainAppContainer(viewModel: StudentKitViewModel) {
                     is Screen.BiometricManagerScreen -> ToolsHubScreen(viewModel = viewModel, title = "Biometric Security Hardware") {
                         BiometricManagerScreen(viewModel = viewModel)
                     }
-                    is Screen.About -> ToolsHubScreen(viewModel = viewModel, title = "About StudentKit Pro") {
+                    is Screen.About -> {
                         AboutScreen(viewModel = viewModel)
                     }
-                    is Screen.Settings -> ToolsHubScreen(viewModel = viewModel, title = "App Settings") {
+                    is Screen.Settings -> {
                         SettingsScreen(viewModel = viewModel)
                     }
                     is Screen.Splash -> {
@@ -479,7 +494,9 @@ fun CategoryModuleSheet(
                 CategoryModuleItem("Edge Scanner", "Scan physical doc pages via camera", "HD SCAN", Icons.Default.DocumentScanner, Color(0xFF673AB7), Screen.DocumentScanner),
                 CategoryModuleItem("ID Card Scanner", "Scan front & back of ID on single page", "SINGLE PAGE", Icons.Default.ContactPage, Color(0xFF1E88E5), Screen.IdCardScanner),
                 CategoryModuleItem("Passport Scanner", "Full photo passport page scan utility", "GOVT DOC", Icons.Default.AssignmentInd, Color(0xFF00ACC1), Screen.PassportScanner),
-                CategoryModuleItem("PDF Tool Suite", "Compress, merge, split or lock PDFs", "EDIT", Icons.Default.Compress, Color(0xFFEF6C00), Screen.PdfTools),
+                CategoryModuleItem("PDF Tool Suite", "14-in-1: Compress, Word (.docx), merge, split, lock", "14-IN-1", Icons.Default.Compress, Color(0xFFEF6C00), Screen.PdfTools),
+                CategoryModuleItem("PDF to Word", "Convert any PDF to editable Word (.docx)", "DOCX", Icons.Default.Description, Color(0xFF1E88E5), Screen.PdfToWord),
+                CategoryModuleItem("PDF Sign & Word→PDF", "Sign, redact blackout & convert Word/TXT to PDF", "SIGN/REDACT", Icons.Default.Draw, Color(0xFF0D47A1), Screen.PdfSignRedact),
                 CategoryModuleItem("OmniPOS Invoice", "Create professional PDF invoices", "INVOICES", Icons.Default.Receipt, Color(0xFF00838F), Screen.InvoiceGenerator),
                 CategoryModuleItem("Hospital Clerk Kit", "Health Dept letters, rosters, show causes & orders", "GOVT KP", Icons.Default.LocalHospital, Color(0xFF00796B), Screen.HospitalClerkAdmin),
                 CategoryModuleItem("Duty Rota Creator", "Official Word (.docx) & PDF rosters with logo & stamp", "WORD DOCX", Icons.Default.TableChart, Color(0xFF0D47A1), Screen.DutyRotaCreator),
@@ -498,6 +515,7 @@ fun CategoryModuleSheet(
                 CategoryModuleItem("QR Scanner", "Scan bar codes & check web links", "CAMERA", Icons.Default.QrCodeScanner, Color(0xFF00897B), Screen.QrScanner),
                 CategoryModuleItem("Password Vault", "Local encrypted credentials keeper", "CRYPT", Icons.Default.Lock, Color(0xFF2E7D32), Screen.PasswordManager),
                 CategoryModuleItem("Image Compress", "Compress, resize & optimize images", "BATCH", Icons.Default.AddPhotoAlternate, Color(0xFFC2185B), Screen.ImageTools),
+                CategoryModuleItem("Video & Audio Studio", "Compress video, trim clips & extract M4A audio", "MEDIA MP4", Icons.Default.VideoLibrary, Color(0xFFD81B60), Screen.VideoAudioStudio),
                 CategoryModuleItem("Age Calculator", "Exact age in years, months & days", "AGE", Icons.Default.Cake, Color(0xFFE91E63), Screen.AgeCalculator),
                 CategoryModuleItem("Intruder Guard", "Silent background selfie & siren alarm", "SECURITY", Icons.Default.Security, Color(0xFFD32F2F), Screen.IntruderGuard),
                 CategoryModuleItem("Watermark Studio", "Add text watermarks & photo filters", "STUDIO", Icons.Default.Brush, Color(0xFF7B1FA2), Screen.WatermarkStudio),
@@ -523,11 +541,13 @@ fun CategoryModuleSheet(
                 CategoryModuleItem("IV Infusion Rate", "IV fluid flow & drop rates tracker", "NURSING", Icons.Default.WaterDrop, Color(0xFF0288D1), Screen.IvCalculator),
                 CategoryModuleItem("Drug Dosage Calc", "Standard patient body-weight dosages", "PHARMACY", Icons.Default.MedicalServices, Color(0xFF00C853), Screen.DosageCalculator),
                 CategoryModuleItem("GFR Renal Solver", "Cockcroft-Gault kidney clearance", "CLINICAL", Icons.Default.Science, Color(0xFFFF9100), Screen.GfrCalculator),
+                CategoryModuleItem("Clinical & ABG Scores", "ABG, Anion Gap, GCS, NEWS2, qSOFA & APGAR", "ER SCORES", Icons.Default.MonitorHeart, Color(0xFFDC2626), Screen.ClinicalScores),
                 CategoryModuleItem("Anatomy Atlas", "Human systems, colorful study charts", "ATLAS", Icons.Default.AccessibilityNew, Color(0xFFE53935), Screen.AnatomyAtlas),
                 CategoryModuleItem("Pharmacy Exam", "Pakistan Category B pharmacy prep", "EXAM PREP", Icons.Default.Quiz, Color(0xFF9C27B0), Screen.PharmacyExam),
                 CategoryModuleItem("Nursing Exam Kit", "NCLEX-RN, DHA, Saudi Prometric prep", "12000+ Qs", Icons.Default.MedicalServices, Color(0xFF00695C), Screen.NursingExam),
                 CategoryModuleItem("Hajj Mission Prep", "Hajj Medical Mission NTS exam prep", "NTS EXAM", Icons.Default.MedicalInformation, Color(0xFF009688), Screen.HajjMedicalPrep),
                 CategoryModuleItem("Moavineen Prep", "Moavineen-e-Hujjaj guide & test Qs", "NTS EXAM", Icons.Default.GroupWork, Color(0xFF3F51B5), Screen.MoavineenHujjajPrep),
+                CategoryModuleItem("Qibla, Salah & Tasbih", "Qibla compass, city/GPS prayer times & haptic tasbih", "ISLAMIC", Icons.Default.Explore, Color(0xFF0F5132), Screen.IslamicDaily),
                 CategoryModuleItem("Islamic Library", "Read Manzil Arabic & Quran books", "MANZIL HD", Icons.Default.MenuBook, Color(0xFF198754), Screen.IslamicHub)
             )
         )
@@ -770,6 +790,8 @@ fun DocumentSubChoicesHub(
         Pair("ID Card Scan", Screen.IdCardScanner),
         Pair("Passport Scan", Screen.PassportScanner),
         Pair("PDF Tools", Screen.PdfTools),
+        Pair("PDF to Word", Screen.PdfToWord),
+        Pair("PDF Sign/Redact", Screen.PdfSignRedact),
         Pair("OmniPOS Hub", Screen.InvoiceGenerator),
         Pair("Stamp & Sign", Screen.SignaturePad)
     )
@@ -862,11 +884,13 @@ fun StudySubChoicesHub(
         Pair("IV Flow", Screen.IvCalculator),
         Pair("Dosage", Screen.DosageCalculator),
         Pair("Kidney GFR", Screen.GfrCalculator),
+        Pair("Clinical Scores", Screen.ClinicalScores),
         Pair("Anatomy", Screen.AnatomyAtlas),
         Pair("Pharm Exam", Screen.PharmacyExam),
         Pair("Nursing Exam", Screen.NursingExam),
         Pair("Hajj Medical", Screen.HajjMedicalPrep),
         Pair("Moavineen Prep", Screen.MoavineenHujjajPrep),
+        Pair("Qibla & Salah", Screen.IslamicDaily),
         Pair("Islamic Library", Screen.IslamicHub)
     )
 
